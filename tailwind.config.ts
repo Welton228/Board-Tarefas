@@ -8,6 +8,12 @@ export default {
   ],
   theme: {
     extend: {
+      maxWidth: {
+        '480px': '480px', // Define o max-width personalizado
+      },
+      fontFamily: {
+        roboto: ['Roboto', 'sans-serif'], // define a fonte personalizada
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
