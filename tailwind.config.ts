@@ -7,6 +7,9 @@ export default {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
+    screens: {
+      xs: {'max': '480px'},
+    },
     extend: {
       maxWidth: {
         '480px': '480px', // Define o max-width personalizado
