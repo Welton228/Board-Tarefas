@@ -8,13 +8,9 @@ import Image from 'next/image';
 // images
 import heroImg from '../../public/assets/hero.png';
 
-// components
-import Header from './header/page';
-
 const Home = () => {
   return (
     <section >
-    <Header/>
     <div className='w-full h-[calc(100vh-76px)] bg-black flex flex-col justify-center items-center'>
       <Head>
         <title>Board Tarefas</title>
