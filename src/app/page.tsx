@@ -13,7 +13,9 @@ import Header from './header/page';
 
 const Home = () => {
   return (
-    <div className='w-full h-screen bg-black flex flex-col justify-center items-center'>
+    <section >
+    <Header/>
+    <div className='w-full h-[calc(100vh-76px)] bg-black flex flex-col justify-center items-center'>
       <Head>
         <title>Board Tarefas</title>
       </Head>
@@ -23,16 +25,17 @@ const Home = () => {
         </div>
         <h1 className='text-white text-center leading-normal m-7 xs:text-sm'>Sistema feito para você organizar seus estudos e tarefas</h1>
         <div className='text-black flex items-center justify-around xs:flex-col '>
-          <section className='bg-white py-3.5 px-11 hover:scale-105 transition-transform durantion-400 text-center xs:w-[70%] xs:mb-5 '>
+          <section className='bg-white py-3.5 px-11 hover:scale-105 transition-transform durantion-400 text-center xs:w-[70%] xs:mb-5 cursor-pointer'>
             <span>+12 posts</span>
           </section>
-          <section className='bg-white py-3.5 px-11 hover:scale-105 transition-transform durantion-400 text-center xs:w-[70%] xs:mb-5'>
+          <section className='bg-white py-3.5 px-11 hover:scale-105 transition-transform durantion-400 text-center xs:w-[70%] xs:mb-5 cursor-pointer'>
             <span>+90 comentários</span>
           </section>
           
         </div>
       </main>
     </div>
+    </section>
   )
 }
 

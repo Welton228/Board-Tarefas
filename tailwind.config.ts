@@ -9,8 +9,15 @@ export default {
   theme: {
     screens: {
       xs: {'max': '480px'},
+      sm: {'max': '412px'},
     },
     extend: {
+      padding: {
+        '18': '18px', // Adiciona o valor personalizado
+      },
+      height: {
+        '76': '76px', // Define a altura personalizada
+      },
       maxWidth: {
         '480px': '480px', // Define o max-width personalizado
       },
