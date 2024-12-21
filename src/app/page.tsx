@@ -1,11 +1,12 @@
-// react
+
+//react
 import React from 'react';
 
-// next libs
+//next libs
 import Head from 'next/head';
 import Image from 'next/image';
 
-// images
+//images
 import heroImg from '../../public/assets/hero.png';
 
 const Home = () => {

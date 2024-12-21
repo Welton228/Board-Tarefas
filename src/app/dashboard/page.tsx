@@ -1,7 +1,8 @@
-// react
+
+//react
 import React from 'react'
 
-// next libs
+//next libs
 import Head from 'next/head'
 const dashboard = () => {
   return (
