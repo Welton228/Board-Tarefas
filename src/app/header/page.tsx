@@ -4,6 +4,7 @@ import React from 'react'
 
 //next libs
 import Link from 'next/link';
+import { useSession, signIn, signOut } from "next-auth/react";
 const Header = () => {
   return (
     <header className='w-full h-76 bg-black flex justify-center items-center'>
