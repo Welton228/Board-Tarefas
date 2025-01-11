@@ -6,6 +6,9 @@ import React from 'react'
 import Link from 'next/link';
 import { useSession, signIn, signOut } from "next-auth/react";
 const Header = () => {
+
+  const { data: session, status } = useSession();
+
   return (
     <header className='w-full h-76 bg-black flex justify-center items-center'>
         <section className='px-18 w-full max-w-5xl flex items-center justify-between'>
@@ -17,7 +20,15 @@ const Header = () => {
               Meu painel
               </Link>
             </nav>
-            <button className='text-white bg-transparent py-2 px-8 rounded-3xl hover:bg-white hover:text-black border-2 border-solid border-white hover:scale-110 transition-transform duration-500 hover:border-gray-500 hover:font-medium sm:text-sm sm:px-4'>Acessar <span className='text-red-500 pl-0.5'>+</span></button>
+
+            {status === "loading" ? (
+              <></>
+            ) : session ? (
+              <button className='text-white bg-transparent py-2 px-8 rounded-3xl hover:bg-white hover:text-black border-2 border-solid border-white hover:scale-110 transition-transform duration-500 hover:border-gray-500 hover:font-medium sm:text-sm sm:px-4' onClick={ () => signOut()}>Olá, {session.user?.name} <span className='text-red-500 pl-0.5'>+</span></button>
+            ) : (
+              <button className='text-white bg-transparent py-2 px-8 rounded-3xl hover:bg-white hover:text-black border-2 border-solid border-white hover:scale-110 transition-transform duration-500 hover:border-gray-500 hover:font-medium sm:text-sm sm:px-4'onClick={ () => signIn("google") }>Acessar <span className='text-red-500 pl-0.5'>+</span></button>
+            )}
+            {/* <button className='text-white bg-transparent py-2 px-8 rounded-3xl hover:bg-white hover:text-black border-2 border-solid border-white hover:scale-110 transition-transform duration-500 hover:border-gray-500 hover:font-medium sm:text-sm sm:px-4'>Acessar <span className='text-red-500 pl-0.5'>+</span></button> */}
         </section>
     </header>
   )
