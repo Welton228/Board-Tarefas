@@ -16,3 +16,11 @@ const dashboard = () => {
 }
 
 export default dashboard
+
+// export const getServerSideProps: GetServerSideProps = async ({ req}) => {
+// console.log('buscando pelo server side props')
+//   return {
+//     props: {
+//       }
+//   }
+// }
