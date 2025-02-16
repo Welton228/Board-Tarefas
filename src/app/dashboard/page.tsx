@@ -2,6 +2,9 @@
 // react
 import React from "react";
 
+// components
+import Textarea from "@/app/textarea/page";
+
 // Next libs
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -24,10 +27,7 @@ const Dashboard = () => {
 
   return (
     <div>
-      <Head>
-        <title>Dashboard</title>
-      </Head>
-      <h1>Bem-vindo ao Painel, {session.user?.name}!</h1>
+      <Textarea/>
     </div>
   );
 };
