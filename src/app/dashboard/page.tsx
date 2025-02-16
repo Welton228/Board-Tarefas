@@ -25,10 +25,9 @@ const Dashboard = () => {
   return (
     <div>
       <Head>
-      <h1>Bem-vindo ao Painel, {session.user?.name}!</h1>
-      {/* Conteúdo da página do dashboard */}
+        <title>Dashboard</title>
       </Head>
-      
+      <h1>Bem-vindo ao Painel, {session.user?.name}!</h1>
     </div>
   );
 };
