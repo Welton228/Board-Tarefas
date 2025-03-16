@@ -24,12 +24,12 @@ export default function FormTarefa() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-6">
-    <section className="bg-white/20 backdrop-blur-lg border border-white/30 p-8 rounded-2xl shadow-2xl max-w-lg w-full flex flex-col items-center">
+    <section className="bg-white/20 backdrop-blur-lg border border-white/30 p-8 rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col items-center">
       <h1 className="text-3xl font-bold text-white drop-shadow-md">📌 Adicione sua tarefa</h1>
       
       <form onSubmit={handleSubmit} className="flex flex-col w-full mt-6 gap-5">
         <textarea
-          className="w-full h-36 border border-white/30 bg-white/10 text-white rounded-xl p-4 resize-none focus:outline-none focus:ring-4 focus:ring-blue-300 placeholder:text-gray-200"
+          className="w-full h-64 border border-white/30 bg-white/10 text-white rounded-xl p-4 resize-none focus:outline-none focus:ring-4 focus:ring-blue-300 placeholder:text-gray-200"
           placeholder="Escreva algo incrível..."
           value={tarefa}
           onChange={(e) => setTarefa(e.target.value)}
