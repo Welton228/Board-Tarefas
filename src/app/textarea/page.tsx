@@ -10,9 +10,10 @@ interface Tarefa {
 export default function FormTarefa() {
   const [tarefa, setTarefa] = useState("");
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [textoEditado, setTextoEditado] = useState("");
 
   useEffect(() => {
-    // Carregar tarefas ao montar o componente
     fetch("/api/getworks")
       .then((res) => res.json())
       .then((data) => setTarefas(data.tarefas))
@@ -21,7 +22,6 @@ export default function FormTarefa() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-
     try {
       const response = await fetch("/api/savework", {
         method: "POST",
@@ -46,14 +46,21 @@ export default function FormTarefa() {
     }
   };
 
-  const handleEdit = async (id: number, newText: string) => {
+  const startEditing = (id: number, texto: string) => {
+    setEditandoId(id);
+    setTextoEditado(texto);
+  };
+
+  const handleSaveEdit = async (id: number) => {
     try {
       await fetch(`/api/edittask/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto: newText }),
+        body: JSON.stringify({ texto: textoEditado }),
       });
-      setTarefas(tarefas.map((t) => (t.id === id ? { ...t, texto: newText } : t)));
+
+      setTarefas(tarefas.map((t) => (t.id === id ? { ...t, texto: textoEditado } : t)));
+      setEditandoId(null);
     } catch (error) {
       console.error("Erro ao editar a tarefa", error);
     }
@@ -66,9 +73,7 @@ export default function FormTarefa() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ publico: !publico }),
       });
-      setTarefas(
-        tarefas.map((t) => (t.id === id ? { ...t, publico: !publico } : t))
-      );
+      setTarefas(tarefas.map((t) => (t.id === id ? { ...t, publico: !publico } : t)));
     } catch (error) {
       console.error("Erro ao mudar status da tarefa", error);
     }
@@ -92,18 +97,29 @@ export default function FormTarefa() {
             🚀 Salvar Tarefa
           </button>
         </form>
+
         <div className="w-full mt-6">
-          {tarefas.map((tarefa) => (
-            <div key={tarefa.id} className="bg-white/10 p-4 rounded-xl text-white mt-4 flex flex-col">
-              <textarea
-                className="w-full border-none bg-transparent text-white p-2 resize-none focus:outline-none"
-                value={tarefa.texto}
-                onChange={(e) => handleEdit(tarefa.id, e.target.value)}
-              />
+          {tarefas.map((t) => (
+            <div key={t.id} className="bg-white/10 p-4 rounded-xl text-white mt-4 flex flex-col">
+              {editandoId === t.id ? (
+                <textarea
+                  className="w-full border-none bg-transparent text-white p-2 resize-none focus:outline-none"
+                  value={textoEditado}
+                  onChange={(e) => setTextoEditado(e.target.value)}
+                />
+              ) : (
+                <p className="p-2">{t.texto}</p>
+              )}
+              
               <div className="flex justify-end gap-3 mt-2">
-                <button onClick={() => handleDelete(tarefa.id)} className="text-red-400">❌ Excluir</button>
-                <button onClick={() => handleTogglePublic(tarefa.id, tarefa.publico)} className={tarefa.publico ? "text-green-400" : "text-gray-400"}>
-                  {tarefa.publico ? "🌍 Público" : "🔒 Privado"}
+                {editandoId === t.id ? (
+                  <button onClick={() => handleSaveEdit(t.id)} className="text-green-400">💾 Salvar</button>
+                ) : (
+                  <button onClick={() => startEditing(t.id, t.texto)} className="text-yellow-400">✏️ Editar</button>
+                )}
+                <button onClick={() => handleDelete(t.id)} className="text-red-400">❌ Excluir</button>
+                <button onClick={() => handleTogglePublic(t.id, t.publico)} className={t.publico ? "text-green-400" : "text-gray-400"}>
+                  {t.publico ? "🌍 Público" : "🔒 Privado"}
                 </button>
               </div>
             </div>
