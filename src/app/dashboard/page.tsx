@@ -19,6 +19,7 @@ interface Task {
   title: string;
   description: string;
   completed: boolean;
+  userId: string; // Adicionamos o userId ao tipo Task
 }
 
 const Dashboard = () => {
@@ -27,32 +28,44 @@ const Dashboard = () => {
   const [tasks, setTasks] = useState<Task[]>([]); // Estado para armazenar as tarefas
   const [editingTask, setEditingTask] = useState<Task | null>(null); // Estado para a tarefa sendo editada
 
-  // Função para buscar tarefas
+  // Função para buscar tarefas do usuário logado
   const fetchTasks = async () => {
-    const res = await fetch('/api/tasks'); // Faz uma requisição GET para a API de tarefas
-    const data = await res.json(); // Converte a resposta para JSON
-    setTasks(data); // Atualiza o estado com as tarefas recebidas
+    if (!session?.user?.id) return; // Verifica se o usuário está logado
+
+    try {
+      const res = await fetch('/api/tasks'); // Faz uma requisição GET para a API de tarefas
+      const data = await res.json(); // Converte a resposta para JSON
+      setTasks(data); // Atualiza o estado com as tarefas recebidas
+    } catch (error) {
+      console.error("Erro ao buscar tarefas:", error);
+    }
   };
 
   // Busca as tarefas ao carregar o dashboard
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (session?.user?.id) {
+      fetchTasks();
+    }
+  }, [session]);
 
   // Função para marcar tarefa como concluída
   const toggleTaskCompletion = async (id: string, completed: boolean) => {
-    const response = await fetch('/api/tasks', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ id, completed: !completed }), // Inverte o status
-    });
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id, completed: !completed }), // Inverte o status
+      });
 
-    if (response.ok) {
-      fetchTasks(); // Recarrega a lista de tarefas
-    } else {
-      alert('Erro ao marcar tarefa como concluída.');
+      if (response.ok) {
+        fetchTasks(); // Recarrega a lista de tarefas
+      } else {
+        alert('Erro ao marcar tarefa como concluída.');
+      }
+    } catch (error) {
+      console.error("Erro ao marcar tarefa como concluída:", error);
     }
   };
 
@@ -61,18 +74,22 @@ const Dashboard = () => {
     const confirmDelete = confirm('Tem certeza que deseja excluir esta tarefa?');
     if (!confirmDelete) return;
 
-    const response = await fetch('/api/tasks', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      });
 
-    if (response.ok) {
-      fetchTasks(); // Recarrega a lista de tarefas
-    } else {
-      alert('Erro ao excluir tarefa.');
+      if (response.ok) {
+        fetchTasks(); // Recarrega a lista de tarefas
+      } else {
+        alert('Erro ao excluir tarefa.');
+      }
+    } catch (error) {
+      console.error("Erro ao excluir tarefa:", error);
     }
   };
 
@@ -94,7 +111,7 @@ const Dashboard = () => {
       </Head>
 
       {/* Cabeçalho */}
-      <header className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8">
+      <header className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-white">Dashboard</h1>
@@ -112,19 +129,19 @@ const Dashboard = () => {
       {/* Conteúdo Principal */}
       <div className="max-w-7xl mx-auto">
         {/* Formulário para criar tarefas */}
-        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8">
+        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
           <h2 className="text-2xl font-semibold text-white mb-4">Criar Nova Tarefa</h2>
           <CreateTaskForm onTaskCreated={fetchTasks} />
         </div>
 
         {/* Lista de tarefas */}
-        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8">
+        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
           <h2 className="text-2xl font-semibold text-white mb-4">Tarefas Cadastradas</h2>
           <ul className="space-y-4">
             {tasks.map((task) => (
               <li
                 key={task.id}
-                className="bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center"
+                className="bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border border-gray-500"
               >
                 <div>
                   <h3 className="text-lg font-semibold text-white">{task.title}</h3>

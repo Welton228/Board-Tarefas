@@ -1,65 +1,84 @@
 'use client';
 
-// React
 import React, { useState } from 'react';
+import { useSession } from 'next-auth/react';
 
-// Define as props do componente
 interface CreateTaskFormProps {
-  onTaskCreated?: () => void; // Função opcional para ser chamada após criar uma tarefa
+  onTaskCreated: () => void; // Função para recarregar a lista de tarefas
 }
 
-const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated = () => {} }) => {
-  // Estados para armazenar o título e a descrição da tarefa
+const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
+  const { data: session } = useSession(); // Obtém a sessão do usuário
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false); // Estado para controlar o envio do formulário
+  const [error, setError] = useState<string | null>(null); // Estado para armazenar mensagens de erro
 
-  // Função chamada quando o formulário é enviado
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Impede o recarregamento da página
+    e.preventDefault();
 
-    // Envia uma requisição POST para a API de tarefas
-    const response = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ title, description }), // Envia os dados da tarefa
-    });
+    // Verifica se o usuário está logado
+    if (!session?.user?.id) {
+      setError('Você precisa estar logado para criar uma tarefa.');
+      return;
+    }
 
-    // Verifica se a requisição foi bem-sucedida
-    if (response.ok) {
-      alert('Tarefa criada com sucesso!'); // Exibe um alerta de sucesso
-      setTitle(''); // Limpa o campo do título
-      setDescription(''); // Limpa o campo da descrição
-      onTaskCreated(); // Chama a função para recarregar as tarefas (se existir)
-    } else {
-      alert('Erro ao criar tarefa.'); // Exibe um alerta de erro
+    setIsSubmitting(true); // Inicia o estado de envio
+    setError(null); // Limpa erros anteriores
+
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title, description }),
+      });
+
+      if (response.ok) {
+        onTaskCreated(); // Recarrega a lista de tarefas
+        setTitle(''); // Limpa o campo de título
+        setDescription(''); // Limpa o campo de descrição
+      } else {
+        const errorData = await response.json();
+        setError(`Erro ao criar tarefa: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Erro ao criar tarefa:', error);
+      setError('Erro ao criar tarefa. Verifique o console para mais detalhes.');
+    } finally {
+      setIsSubmitting(false); // Finaliza o estado de envio
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Campo de entrada para o título */}
+    <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
       <input
         type="text"
         placeholder="Título"
         value={title}
-        onChange={(e) => setTitle(e.target.value)} // Atualiza o estado do título
-        className="p-2 border rounded w-full"
+        onChange={(e) => setTitle(e.target.value)}
+        className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+        disabled={isSubmitting} // Desabilita o campo durante o envio
       />
-      {/* Campo de entrada para a descrição */}
       <textarea
         placeholder="Descrição"
         value={description}
-        onChange={(e) => setDescription(e.target.value)} // Atualiza o estado da descrição
-        className="p-2 border rounded w-full"
+        onChange={(e) => setDescription(e.target.value)}
+        className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+        disabled={isSubmitting} // Desabilita o campo durante o envio
       />
-      {/* Botão para enviar o formulário */}
+      {error && (
+        <p className="text-red-500 text-sm">{error}</p> // Exibe mensagens de erro
+      )}
       <button
         type="submit"
-        className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-300 disabled:opacity-50"
+        disabled={isSubmitting} // Desabilita o botão durante o envio
       >
-        Criar Tarefa
+        {isSubmitting ? 'Criando...' : 'Criar Tarefa'}
       </button>
     </form>
   );
