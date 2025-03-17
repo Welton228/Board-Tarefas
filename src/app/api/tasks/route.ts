@@ -1,17 +1,12 @@
-// Importa a instância do Prisma Client
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-// Importa os tipos NextRequest e NextResponse do Next.js
-import { NextResponse, NextRequest } from 'next/server';
 
-// Define a função GET para buscar todas as tarefas
+// Buscar todas as tarefas
 export async function GET() {
   try {
-    // Busca todas as tarefas no banco de dados
     const tasks = await prisma.task.findMany();
-    // Retorna as tarefas como JSON com status 200 (OK)
     return NextResponse.json(tasks, { status: 200 });
   } catch (error) {
-    // Se ocorrer um erro, retorna uma mensagem de erro com status 500 (Internal Server Error)
     return NextResponse.json(
       { error: 'Erro ao buscar tarefas' },
       { status: 500 }
@@ -19,24 +14,70 @@ export async function GET() {
   }
 }
 
-// Define a função POST para criar uma nova tarefa
-export async function POST(req: NextRequest) {
+// Criar uma nova tarefa
+export async function POST(req: Request) {
   try {
-    // Extrai o corpo da requisição
     const { title, description } = await req.json();
-    // Cria a tarefa no banco de dados usando o Prisma Client
     const newTask = await prisma.task.create({
       data: {
         title,
         description,
       },
     });
-    // Retorna a nova tarefa criada com status 201 (Created)
     return NextResponse.json(newTask, { status: 201 });
   } catch (error) {
-    // Se ocorrer um erro, retorna uma mensagem de erro com status 500 (Internal Server Error)
     return NextResponse.json(
       { error: 'Erro ao criar tarefa' },
+      { status: 500 }
+    );
+  }
+}
+
+// Editar uma tarefa
+export async function PATCH(req: Request) {
+  try {
+    const { id, title, description } = await req.json();
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: { title, description },
+    });
+    return NextResponse.json(updatedTask, { status: 200 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Erro ao editar tarefa' },
+      { status: 500 }
+    );
+  }
+}
+
+// Marcar tarefa como concluída
+export async function PUT(req: Request) {
+  try {
+    const { id, completed } = await req.json();
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: { completed },
+    });
+    return NextResponse.json(updatedTask, { status: 200 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Erro ao atualizar tarefa' },
+      { status: 500 }
+    );
+  }
+}
+
+// Excluir uma tarefa
+export async function DELETE(req: Request) {
+  try {
+    const { id } = await req.json();
+    await prisma.task.delete({
+      where: { id },
+    });
+    return NextResponse.json({ message: 'Tarefa excluída' }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Erro ao excluir tarefa' },
       { status: 500 }
     );
   }
