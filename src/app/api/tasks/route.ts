@@ -1,30 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../lib/auth'; // Configuração de autenticação
-import { prisma } from '@/lib/prisma'; // Configuração do Prisma
+import { authOptions } from '@/lib/auth'; // Ajuste no caminho da importação
+import { prisma } from '@/lib/prisma';
+
+// Middleware para verificar autenticação
+async function getSession() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return null;
+  }
+  return session;
+}
 
 // Buscar todas as tarefas do usuário logado
 export async function GET() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const tasks = await prisma.task.findMany({
-      where: { userId: session.user.id }, // Filtra tarefas pelo ID do usuário
+      where: { userId: session.user.id },
       select: {
         id: true,
         title: true,
         description: true,
         completed: true,
         createdAt: true,
-        userId: true, // Inclui o userId na resposta
+        userId: true,
       },
     });
     return NextResponse.json(tasks, { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
       { error: 'Erro ao buscar tarefas', details: error.message },
       { status: 500 }
@@ -34,16 +42,13 @@ export async function GET() {
 
 // Criar uma nova tarefa para o usuário logado
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const { title, description } = await req.json();
-
-    // Validação básica dos dados
     if (!title || !description) {
       return NextResponse.json(
         { error: 'Título e descrição são obrigatórios' },
@@ -52,22 +57,18 @@ export async function POST(req: Request) {
     }
 
     const newTask = await prisma.task.create({
-      data: {
-        title,
-        description,
-        userId: session.user.id, // Associa a tarefa ao usuário logado
-      },
+      data: { title, description, userId: session.user.id },
       select: {
         id: true,
         title: true,
         description: true,
         completed: true,
         createdAt: true,
-        userId: true, // Inclui o userId na resposta
+        userId: true,
       },
     });
     return NextResponse.json(newTask, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
       { error: 'Erro ao criar tarefa', details: error.message },
       { status: 500 }
@@ -75,18 +76,20 @@ export async function POST(req: Request) {
   }
 }
 
+// Função para verificar se a tarefa pertence ao usuário logado
+async function getTask(id: string, userId: string) {
+  return await prisma.task.findUnique({ where: { id, userId } });
+}
+
 // Editar uma tarefa do usuário logado
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const { id, title, description } = await req.json();
-
-    // Validação básica dos dados
     if (!id || !title || !description) {
       return NextResponse.json(
         { error: 'ID, título e descrição são obrigatórios' },
@@ -94,9 +97,8 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // Verifica se a tarefa pertence ao usuário logado
-    const task = await prisma.task.findUnique({ where: { id } });
-    if (!task || task.userId !== session.user.id) {
+    const task = await getTask(id, session.user.id);
+    if (!task) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
@@ -109,11 +111,11 @@ export async function PATCH(req: Request) {
         description: true,
         completed: true,
         createdAt: true,
-        userId: true, // Inclui o userId na resposta
+        userId: true,
       },
     });
     return NextResponse.json(updatedTask, { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
       { error: 'Erro ao editar tarefa', details: error.message },
       { status: 500 }
@@ -121,18 +123,15 @@ export async function PATCH(req: Request) {
   }
 }
 
-// Marcar tarefa como concluída (apenas para o usuário logado)
+// Marcar tarefa como concluída
 export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const { id, completed } = await req.json();
-
-    // Validação básica dos dados
     if (!id || typeof completed !== 'boolean') {
       return NextResponse.json(
         { error: 'ID e status de conclusão são obrigatórios' },
@@ -140,26 +139,17 @@ export async function PUT(req: Request) {
       );
     }
 
-    // Verifica se a tarefa pertence ao usuário logado
-    const task = await prisma.task.findUnique({ where: { id } });
-    if (!task || task.userId !== session.user.id) {
+    const task = await getTask(id, session.user.id);
+    if (!task) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const updatedTask = await prisma.task.update({
       where: { id },
       data: { completed },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        completed: true,
-        createdAt: true,
-        userId: true, // Inclui o userId na resposta
-      },
     });
     return NextResponse.json(updatedTask, { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
       { error: 'Erro ao atualizar tarefa', details: error.message },
       { status: 500 }
@@ -169,16 +159,13 @@ export async function PUT(req: Request) {
 
 // Excluir uma tarefa do usuário logado
 export async function DELETE(req: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const { id } = await req.json();
-
-    // Validação básica dos dados
     if (!id) {
       return NextResponse.json(
         { error: 'ID da tarefa é obrigatório' },
@@ -186,9 +173,8 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // Verifica se a tarefa pertence ao usuário logado
-    const task = await prisma.task.findUnique({ where: { id } });
-    if (!task || task.userId !== session.user.id) {
+    const task = await getTask(id, session.user.id);
+    if (!task) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
@@ -197,7 +183,7 @@ export async function DELETE(req: Request) {
       { message: 'Tarefa excluída com sucesso' },
       { status: 200 }
     );
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
       { error: 'Erro ao excluir tarefa', details: error.message },
       { status: 500 }
