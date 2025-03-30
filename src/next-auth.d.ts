@@ -9,7 +9,7 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
     };
-    accessToken?: string;
+    accessToken?: string; // Opcional para maior flexibilidade
   }
   
   interface User {
@@ -18,6 +18,6 @@ declare module "next-auth" {
   
   interface JWT {
     userId: string;
-    accessToken?: string;
+    accessToken?: string; // Também opcional aqui
   }
 }
