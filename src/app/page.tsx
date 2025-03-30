@@ -44,7 +44,9 @@ const Home = () => {
               className="max-w-[480px] w-auto h-auto object-contain xs:max-w-[80%]"
               alt="Logo Tarefas+"
               src={heroImg}
-              priority
+              priority // Garantindo que a imagem seja carregada com prioridade
+              width={480} // Tamanho recomendado para imagens
+              height={480} // Tamanho recomendado para imagens
             />
           </div>
 

@@ -38,11 +38,12 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.accessToken}` // Alterado para usar accessToken
                 },
                 body: JSON.stringify({ 
                     title, 
-                    description, 
-                    userId: session.user.id 
+                    description
+                    // Removido userId do body pois será obtido do token no backend
                 }),
             });
 
@@ -52,7 +53,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
                 setDescription('');
             } else {
                 const errorData = await response.json();
-                setError(`Erro ao criar tarefa: ${errorData.error}`);
+                setError(`Erro ao criar tarefa: ${errorData.error || 'Erro desconhecido'}`);
             }
         } catch (error) {
             console.error('Erro ao criar tarefa:', error);

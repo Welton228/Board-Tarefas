@@ -138,42 +138,42 @@ const Dashboard = () => {
         <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
           <h2 className="text-2xl font-semibold text-white mb-4">Tarefas Cadastradas</h2>
           <ul className="space-y-4">
-            {tasks.map((task) => (
-              <li
-                key={task.id}
-                className="bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border border-gray-500"
-              >
-                <div>
-                  <h3 className="text-lg font-semibold text-white">{task.title}</h3>
-                  <p className="text-gray-300">{task.description}</p>
-                </div>
-                <div className="flex space-x-4">
-                  <button
-                    onClick={() => setEditingTask(task)} // Abre o modal de edição
-                    className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors duration-300"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => toggleTaskCompletion(task.id, task.completed)}
-                    className={`p-2 rounded-lg ${
-                      task.completed
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-yellow-600 hover:bg-yellow-700'
-                    } text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors duration-300`}
-                  >
-                    {task.completed ? 'Concluída' : 'Marcar como concluída'}
-                  </button>
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-300"
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+  {Array.isArray(tasks) ? (
+    tasks.map((task) => (
+      <li key={task.id} className="bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border border-gray-500">
+        <div>
+          <h3 className="text-lg font-semibold text-white">{task.title}</h3>
+          <p className="text-gray-300">{task.description}</p>
+        </div>
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setEditingTask(task)}
+            className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => toggleTaskCompletion(task.id, task.completed)}
+            className={`p-2 rounded-lg ${
+              task.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'
+            } text-white`}
+          >
+            {task.completed ? 'Concluída' : 'Marcar como concluída'}
+          </button>
+          <button
+            onClick={() => deleteTask(task.id)}
+            className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white"
+          >
+            Excluir
+          </button>
+        </div>
+      </li>
+    ))
+  ) : (
+    <p className="text-white">Nenhuma tarefa encontrada.</p>
+  )}
+</ul>
+
         </div>
       </div>
 

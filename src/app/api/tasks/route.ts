@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth'; // Ajuste no caminho da importação
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // Middleware para verificar autenticação
@@ -30,7 +30,8 @@ export async function GET() {
         createdAt: true,
         userId: true,
       },
-    });
+    }) || []; // Se retornar null, define como array vazio
+
     return NextResponse.json(tasks, { status: 200 });
   } catch (error: any) {
     return NextResponse.json(
