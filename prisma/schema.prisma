@@ -1,35 +1,17 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-
-// configura o prisma client
-generator client {
-  provider = "prisma-client-js"
-}
-
-// configura a conexao com o banco de dados
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// define uma tabela no banco de dados (neste caso a tabela Task)
-model User {
-  id    String @id @default(cuid())
-  name  String?
-  email String? @unique
-  tasks Task[]
-}
-
 model Task {
-  id          String   @id @default(cuid())
+  id          Int      @id @default(autoincrement())
   title       String
   description String?
   completed   Boolean  @default(false)
   createdAt   DateTime @default(now())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(uuid())
+  // ... outros campos do usuário
+  tasks         Task[]
 }

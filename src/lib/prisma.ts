@@ -13,3 +13,5 @@ export const prisma =
 // Em ambiente de desenvolvimento, armazena a instância do Prisma Client na variável global
 // Isso evita a criação de novas instâncias a cada hot-reload
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+export default prisma;

@@ -2,19 +2,41 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 
-export async function middleware(req: NextRequest) {
-    // Verifica o token de sessão
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+export async function middleware(request: NextRequest) {
+  // Configuração do token
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: process.env.NODE_ENV === "production"
+  });
 
-    // Se o usuário NÃO estiver autenticado, redireciona para a home com a mensagem
-    if (!token) {
-        return NextResponse.redirect(new URL("/?message=Acesso negado! Faça login primeiro.", req.url));
-    }
+  const path = request.nextUrl.pathname;
 
-    return NextResponse.next(); // Permite o acesso caso o usuário esteja autenticado
+  // Rotas protegidas
+  const protectedRoutes = [
+    '/dashboard',
+    '/dashboard/:path*'
+  ];
+
+  // Verifica se a rota atual é protegida
+  const isProtectedRoute = protectedRoutes.some(route => 
+    path.startsWith(route.replace('/:path*', ''))
+  );
+
+  // Redirecionamento se não autenticado
+  if (isProtectedRoute && !token) {
+    const loginUrl = new URL('/', request.nextUrl.origin);
+    loginUrl.searchParams.set('callbackUrl', path);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
 }
 
-// Configuração de rotas para proteger
+// Configuração de rotas protegidas
 export const config = {
-    matcher: ["/dashboard/:path*"], // Protege todas as rotas dentro de /dashboard
+  matcher: [
+    '/dashboard/:path*',
+    '/api/protected/:path*'
+  ],
 };
