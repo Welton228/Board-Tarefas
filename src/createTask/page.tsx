@@ -7,7 +7,7 @@ interface CreateTaskFormProps {
 }
 
 const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,37 +15,60 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Token:', (session as any)?.accessToken); 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      // Verificação robusta da sessão
-      if (!session?.user?.id || !(session as any)?.accessToken) {
-        throw new Error('Sessão inválida');
+      // Verificação completa da sessão
+      if (status !== 'authenticated' || !session?.user?.id) {
+        throw new Error('Por favor, faça login novamente');
+      }
+
+      const accessToken = (session as any)?.accessToken;
+      if (!accessToken) {
+        throw new Error('Token de acesso não encontrado');
       }
 
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any).accessToken}`
+          'Authorization': `Bearer ${accessToken}`
         },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify({ 
+          title: title.trim(),
+          description: description.trim()
+        }),
       });
 
+      // Verificação detalhada da resposta
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao criar tarefa');
+        let errorMessage = 'Erro ao criar tarefa';
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (e) {
+          errorMessage = await response.text() || errorMessage;
+        }
+
+        throw new Error(errorMessage);
       }
 
-      // Limpa o formulário e atualiza a lista
+      // Limpa o formulário após sucesso
       setTitle('');
       setDescription('');
       onTaskCreated();
+
     } catch (error: any) {
-      console.error('Erro ao criar tarefa:', error);
+      console.error('Erro detalhado:', error);
       setError(error.message || 'Erro ao criar tarefa');
+      
+      // Tratamento específico para erros de autenticação
+      if (error.message.includes('não autorizado') || 
+          error.message.includes('login')) {
+        setError('Sessão expirada. Por favor, faça login novamente.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -80,7 +103,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
       <button
         type="submit"
         className="w-full p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        disabled={isSubmitting}
+        disabled={isSubmitting || status !== 'authenticated'}
       >
         {isSubmitting ? 'Criando...' : 'Criar Tarefa'}
       </button>

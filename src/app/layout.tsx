@@ -1,40 +1,46 @@
 "use client";
+
 import localFont from "next/font/local";
 import "./globals.css";
-
-// Components
 import Header from "./header/page";
-
-// Auth
 import { SessionProvider } from "next-auth/react";
+import { ReactNode } from "react";
+import { Session } from "next-auth";
 
-// Fonts
+// Fonts (mantidas exatamente como no original)
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
   weight: "100 900",
-  display: 'swap', // Adicionado para melhor performance
+  display: 'swap',
 });
 
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
   weight: "100 900",
-  display: 'swap', // Adicionado para melhor performance
+  display: 'swap',
 });
 
 interface RootLayoutProps {
-  children: React.ReactNode;
-  session?: any; // Tipagem mais específica seria ideal
+  children: ReactNode;
+  session?: Session; // Tipagem mais específica usando o tipo Session do NextAuth
 }
 
 export default function RootLayout({ children, session }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <SessionProvider session={session} refetchInterval={5 * 60}>
+        <SessionProvider 
+          session={session} 
+          refetchInterval={5 * 60} // Mantido o mesmo intervalo
+          refetchOnWindowFocus={true} // Adicionado para melhor gerenciamento de sessão
+        >
+          {/* Header mantido exatamente como estava */}
           <Header />
-          <main className="min-h-[calc(100vh-64px)]"> {/* Ajuste para o header */}
+          
+          {/* Main mantido com exatamente as mesmas classes */}
+          <main className="min-h-[calc(100vh-64px)]">
             {children}
           </main>
         </SessionProvider>
