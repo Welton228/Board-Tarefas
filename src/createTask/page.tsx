@@ -8,6 +8,7 @@ interface CreateTaskFormProps {
 
 const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
   const { data: session, status } = useSession();
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,36 +16,31 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Evita enviar requisição sem estar autenticado
+    if (status !== 'authenticated') {
+      setError('Sessão expirada. Faça login novamente.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      // Verificação completa da sessão
-      if (status !== 'authenticated' || !session?.user?.id) {
-        throw new Error('Por favor, faça login novamente');
-      }
-
-      const accessToken = (session as any)?.accessToken;
-      if (!accessToken) {
-        throw new Error('Token de acesso não encontrado');
-      }
-
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          // ⚠️ Authorization é opcional se backend usa getToken() com cookie
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           title: title.trim(),
-          description: description.trim()
+          description: description.trim(),
         }),
       });
 
-      // Verificação detalhada da resposta
       if (!response.ok) {
         let errorMessage = 'Erro ao criar tarefa';
-        
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
@@ -55,7 +51,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
         throw new Error(errorMessage);
       }
 
-      // Limpa o formulário após sucesso
+      // Limpa o formulário e chama callback para recarregar a lista
       setTitle('');
       setDescription('');
       onTaskCreated();
@@ -63,12 +59,6 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
     } catch (error: any) {
       console.error('Erro detalhado:', error);
       setError(error.message || 'Erro ao criar tarefa');
-      
-      // Tratamento específico para erros de autenticação
-      if (error.message.includes('não autorizado') || 
-          error.message.includes('login')) {
-        setError('Sessão expirada. Por favor, faça login novamente.');
-      }
     } finally {
       setIsSubmitting(false);
     }

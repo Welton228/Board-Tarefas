@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Head from 'next/head';
 import CreateTaskForm from "@/createTask/page";
-import EditTaskModal from "../../editTaskModal/page";
+import EditTaskModal from "../editTaskModal/page";
 
 interface Task {
   id: string;
@@ -19,13 +19,12 @@ interface Task {
 const ClientDashboard = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
-
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Função para buscar as tarefas do usuário autenticado
+  // Carrega tarefas do usuário autenticado
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
@@ -34,46 +33,43 @@ const ClientDashboard = () => {
       const response = await fetch('/api/tasks', {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        cache: 'no-store',
+        cache: 'no-store'
       });
 
-      // Se a sessão expirou, força logout
       if (response.status === 401) {
         signOut({ callbackUrl: '/?message=Sessao expirada' });
         return;
       }
 
-      // Se não houver erro, mas também não houver dados
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Erro ao buscar tarefas');
+      }
+
       if (response.status === 204) {
         setTasks([]);
         return;
-      }
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || 'Erro ao buscar tarefas');
       }
 
       const data = await response.json();
       setTasks(data);
 
     } catch (error: any) {
+      console.error('Erro ao buscar tarefas:', error);
       setError(error.message || 'Erro ao carregar tarefas');
     } finally {
       setLoading(false);
     }
   };
 
-  // Alternar status da tarefa (concluído <-> pendente)
+  // Alterna entre concluir ou reabrir uma tarefa
   const toggleTaskCompletion = async (id: string, completed: boolean) => {
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ completed: !completed }),
       });
 
@@ -82,12 +78,13 @@ const ClientDashboard = () => {
       }
 
       if (!response.ok) {
-        throw new Error('Erro ao atualizar tarefa');
+        throw new Error('Falha ao atualizar tarefa');
       }
 
-      // Atualiza o estado local da tarefa
-      setTasks(prev =>
-        prev.map(task => task.id === id ? { ...task, completed: !completed } : task)
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === id ? { ...task, completed: !completed } : task
+        )
       );
 
     } catch (error: any) {
@@ -95,13 +92,13 @@ const ClientDashboard = () => {
     }
   };
 
-  // Excluir tarefa com confirmação
+  // Deleta uma tarefa com confirmação
   const deleteTask = async (id: string) => {
-    if (!confirm('Deseja realmente excluir esta tarefa?')) return;
+    if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
 
     try {
       const response = await fetch(`/api/tasks/${id}`, {
-        method: 'DELETE',
+        method: 'DELETE'
       });
 
       if (response.status === 401) {
@@ -109,17 +106,17 @@ const ClientDashboard = () => {
       }
 
       if (!response.ok) {
-        throw new Error('Erro ao excluir tarefa');
+        throw new Error('Falha ao excluir tarefa');
       }
 
-      setTasks(prev => prev.filter(task => task.id !== id));
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
 
     } catch (error: any) {
       setError(error.message);
     }
   };
 
-  // Verifica o status da sessão e carrega as tarefas
+  // Carrega tarefas após autenticação
   useEffect(() => {
     if (status === 'loading') return;
 
@@ -128,13 +125,12 @@ const ClientDashboard = () => {
       return;
     }
 
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && session) {
       fetchTasks();
     }
-  }, [status]);
+  }, [status, session]);
 
-  // Enquanto carrega a sessão
-  if (status === 'loading') {
+  if (status === "loading") {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
@@ -174,7 +170,7 @@ const ClientDashboard = () => {
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/' })}
-            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition duration-300"
+            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-300"
           >
             Sair
           </button>
@@ -182,13 +178,11 @@ const ClientDashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto">
-        {/* Formulário de criação */}
         <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
           <h2 className="text-2xl font-semibold text-white mb-4">Criar Nova Tarefa</h2>
           <CreateTaskForm onTaskCreated={fetchTasks} />
         </div>
 
-        {/* Lista de tarefas */}
         <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
           <h2 className="text-2xl font-semibold text-white mb-4">Tarefas Cadastradas</h2>
 
@@ -203,16 +197,12 @@ const ClientDashboard = () => {
               {tasks.map((task) => (
                 <li
                   key={task.id}
-                  className={`bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border ${
-                    task.completed ? 'border-green-500' : 'border-gray-500'
-                  }`}
+                  className={`bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border ${task.completed ? 'border-green-500' : 'border-gray-500'
+                    }`}
                 >
                   <div className="flex-1">
-                    <h3
-                      className={`text-lg font-semibold ${
-                        task.completed ? 'text-green-300 line-through' : 'text-white'
-                      }`}
-                    >
+                    <h3 className={`text-lg font-semibold ${task.completed ? 'text-green-300 line-through' : 'text-white'
+                      }`}>
                       {task.title}
                     </h3>
                     <p className="text-gray-300">{task.description}</p>
@@ -220,25 +210,22 @@ const ClientDashboard = () => {
                   <div className="flex space-x-2">
                     <button
                       onClick={() => setEditingTask(task)}
-                      className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition duration-200"
+                      className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors duration-200"
                       title="Editar tarefa"
                     >
                       ✏️
                     </button>
                     <button
                       onClick={() => toggleTaskCompletion(task.id, task.completed)}
-                      className={`p-2 rounded-lg transition duration-200 ${
-                        task.completed
-                          ? 'bg-green-600 hover:bg-green-700'
-                          : 'bg-yellow-600 hover:bg-yellow-700'
-                      } text-white`}
+                      className={`p-2 rounded-lg transition-colors duration-200 ${task.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'
+                        } text-white`}
                       title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
                     >
                       {task.completed ? '✅' : '⬜'}
                     </button>
                     <button
                       onClick={() => deleteTask(task.id)}
-                      className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-200"
+                      className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors duration-200"
                       title="Excluir tarefa"
                     >
                       🗑️
@@ -251,7 +238,6 @@ const ClientDashboard = () => {
         </div>
       </div>
 
-      {/* Modal de edição */}
       {editingTask && (
         <EditTaskModal
           task={editingTask}
