@@ -1,33 +1,29 @@
 // lib/auth.ts
 
-import { type NextAuthOptions } from 'next-auth';
-import GoogleProvider from 'next-auth/providers/google';
-import { getToken as nextAuthGetToken } from 'next-auth/jwt';
-import type { NextRequest } from 'next/server';
+import { type NextAuthOptions } from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import { getToken as nextAuthGetToken } from "next-auth/jwt";
+import type { NextRequest } from "next/server";
 
 /**
- * Função para renovar o token de acesso do Google quando expira.
- * Usa o refresh token para obter um novo access token.
+ * Função para renovar o token de acesso do Google usando o refresh token.
  */
 const refreshAccessToken = async (token: any) => {
   try {
-    console.log('[REFRESH TOKEN] Iniciando renovação do token...');
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        grant_type: 'refresh_token',
+        grant_type: "refresh_token",
         refresh_token: token.refreshToken,
       }),
     });
 
     const data = await response.json();
-    console.log('[REFRESH TOKEN RESPONSE]', data);
 
     if (!response.ok) throw data;
 
@@ -39,16 +35,13 @@ const refreshAccessToken = async (token: any) => {
       error: undefined,
     };
   } catch (error) {
-    console.error('[REFRESH TOKEN ERROR]', error);
-    return { ...token, error: 'RefreshAccessTokenError' };
+    console.error("[REFRESH TOKEN ERROR]", error);
+    return { ...token, error: "RefreshAccessTokenError" };
   }
 };
 
 /**
- * Configurações do NextAuth, incluindo:
- * - Provedor Google
- * - Sessões baseadas em JWT
- * - Callbacks personalizados
+ * Configurações do NextAuth.
  */
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -57,99 +50,114 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          prompt: 'consent',
-          access_type: 'offline',
-          response_type: 'code',
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
           scope:
-            'openid email profile https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+            "openid email profile https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email",
         },
       },
     }),
   ],
 
   session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 dias
-    updateAge: 24 * 60 * 60,   // Atualiza a sessão a cada 24h
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
 
   callbacks: {
     async jwt({ token, account, user, trigger, session }) {
-      if (trigger === 'update') {
-        console.log('[JWT - UPDATE TRIGGER]', session.user);
-        return { ...token, ...session.user };
+      if (trigger === "update" && session?.user) {
+        return {
+          ...token,
+          name: session.user.name,
+          email: session.user.email,
+          picture: session.user.image,
+        };
       }
 
       if (account && user) {
-        const firstLoginToken = {
+        return {
           ...token,
+          id: user.id,
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
           accessTokenExpires: account.expires_at
             ? account.expires_at * 1000
             : Date.now() + 3600 * 1000,
-          id: user.id,
           error: undefined,
         };
-        console.log('[JWT - FIRST LOGIN]', firstLoginToken);
-        return firstLoginToken;
       }
 
       if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
-        console.log('[JWT - VÁLIDO]', token);
         return token;
       }
 
-      console.log('[JWT - EXPIROU, TENTANDO RENOVAR]');
-      const refreshedToken = await refreshAccessToken(token);
-      console.log('[JWT - RENOVADO]', refreshedToken);
-      return refreshedToken;
+      return await refreshAccessToken(token);
     },
 
     async session({ session, token }) {
-      session.error = token.error;
-      session.accessToken = token.accessToken;
-      session.user.id = token.id;
-
-      console.log('[SESSION CALLBACK]', session);
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.accessToken = token.accessToken as string;
+        session.error = token.error;
+      }
       return session;
     },
   },
 
   cookies: {
     sessionToken: {
-      name: `${process.env.NODE_ENV === 'production' ? '__Secure-' : ''}next-auth.session-token`,
+      name: `${
+        process.env.NODE_ENV === "production" ? "__Secure-" : ""
+      }next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
         maxAge: 30 * 24 * 60 * 60,
       },
     },
   },
 
   pages: {
-    signIn: '/login',
-    error: '/auth/error',
+    signIn: "/login",
+    error: "/auth/error",
   },
 
   secret: process.env.NEXTAUTH_SECRET!,
-  debug: process.env.NODE_ENV === 'development',
+  debug: process.env.NEXTAUTH_DEBUG === "true",
 };
 
 /**
- * Função auxiliar para obter o token do lado do servidor.
- * Compatível com App Router (NextRequest).
+ * Tipagem do token com os campos personalizados.
  */
-export const getToken = async (req: NextRequest) => {
+interface DecodedToken {
+  id?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  accessToken?: string;
+  accessTokenExpires?: number;
+  refreshToken?: string;
+  error?: string;
+  [key: string]: any;
+}
+
+/**
+ * Função auxiliar para obter o token no App Router via NextRequest.
+ */
+export const getToken = async (
+  req: NextRequest
+): Promise<DecodedToken | null> => {
   const token = await nextAuthGetToken({
     req,
     secret: process.env.NEXTAUTH_SECRET!,
-    secureCookie: process.env.NODE_ENV === 'production',
-    raw: true, // Força a leitura correta do cookie no App Router
+    secureCookie: process.env.NODE_ENV === "production",
+    raw: false, // ← IMPORTANTE! Retorna um objeto decodificado
   });
 
-  console.log('[GET TOKEN] =>', token);
-  return token;
+  return token as DecodedToken | null;
 };

@@ -23,6 +23,7 @@ export async function middleware(request: NextRequest) {
     // 🔴 Rotas protegidas (requerem autenticação)
     const isProtectedRoute =
       pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/api/tasks') ||
       pathname.startsWith('/api/protected');
 
     // ✅ Usuário logado tentando acessar /login → redireciona para /dashboard

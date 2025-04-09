@@ -2,12 +2,11 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getToken } from '@/lib/auth'; // função customizada com next-auth/jwt
+import { getToken } from '@/lib/auth'; // wrapper do next-auth/jwt
 import type { NextRequest } from 'next/server';
 
 /**
- * Tipagem opcional da estrutura de uma tarefa.
- * (usada para dar clareza na estrutura retornada, mas Prisma já tipa se você quiser)
+ * Estrutura de uma tarefa
  */
 interface Task {
   id: string;
@@ -24,10 +23,10 @@ interface Task {
  */
 export async function GET(req: NextRequest) {
   try {
-    // Recupera token decodificado usando NextAuth
+    // Recupera token decodificado
     const token = await getToken(req);
 
-    // Garante que o token existe e contém ID de usuário
+    // Verifica se o token é válido e possui o ID do usuário
     if (!token || !token.id) {
       return NextResponse.json(
         { error: 'Sessão expirada ou inválida. Faça login novamente.' },
@@ -35,13 +34,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Busca tarefas associadas ao usuário autenticado
+    // Busca tarefas do usuário autenticado
     const tasks: Task[] = await prisma.task.findMany({
       where: { userId: token.id },
-      orderBy: { createdAt: 'desc' }, // ordena por mais recente
+      orderBy: { createdAt: 'desc' }, // Mais recentes primeiro
     });
 
-    // Retorna lista de tarefas como JSON
+    // Retorna as tarefas
     return NextResponse.json(tasks);
   } catch (error: any) {
     console.error('[GET TASKS ERROR]', error);
