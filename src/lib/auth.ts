@@ -4,6 +4,7 @@ import { type NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { getToken as nextAuthGetToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Função para renovar o token de acesso do Google usando o refresh token.
@@ -77,10 +78,21 @@ export const authOptions: NextAuthOptions = {
         };
       }
 
+      // Primeira vez que o usuário loga
       if (account && user) {
+        // Verifica se o usuário já existe no banco
+        const dbUser = await prisma.user.upsert({
+          where: { email: user.email! },
+          update: {},
+          create: {
+            email: user.email!,
+            name: user.name!,
+          },
+        });
+
         return {
           ...token,
-          id: user.id,
+          id: dbUser.id, // ← Aqui está o UUID correto
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
           accessTokenExpires: account.expires_at
@@ -156,7 +168,7 @@ export const getToken = async (
     req,
     secret: process.env.NEXTAUTH_SECRET!,
     secureCookie: process.env.NODE_ENV === "production",
-    raw: false, // ← IMPORTANTE! Retorna um objeto decodificado
+    raw: false,
   });
 
   return token as DecodedToken | null;

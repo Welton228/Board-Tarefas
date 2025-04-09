@@ -31,7 +31,6 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // ⚠️ Authorization é opcional se backend usa getToken() com cookie
         },
         body: JSON.stringify({
           title: title.trim(),
@@ -41,11 +40,21 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
 
       if (!response.ok) {
         let errorMessage = 'Erro ao criar tarefa';
+
         try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (e) {
-          errorMessage = await response.text() || errorMessage;
+          const contentType = response.headers.get('content-type');
+
+          // Verifica se o erro é JSON e extrai de forma segura
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } else {
+            // Se não for JSON, tenta ler como texto
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          }
+        } catch (err) {
+          console.error('Erro ao interpretar resposta de erro:', err);
         }
 
         throw new Error(errorMessage);
