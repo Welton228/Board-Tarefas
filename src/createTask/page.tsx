@@ -40,7 +40,7 @@ const CreateTaskForm = ({ onTaskCreated }: CreateTaskFormProps) => {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Digite o título da tarefa"
-          className="w-full p-4 bg-gray-700 text-white rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
+          className="w-full p-4 bg-gray-700 text-black rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
         />
       </div>
 
@@ -53,7 +53,7 @@ const CreateTaskForm = ({ onTaskCreated }: CreateTaskFormProps) => {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Digite a descrição da tarefa"
-          className="w-full p-4 bg-gray-700 text-white rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
+          className="w-full p-4 bg-gray-700 text-black rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
         />
       </div>
 
