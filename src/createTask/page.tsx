@@ -1,110 +1,67 @@
-'use client';
-import React, { useState } from 'react';
-import { useSession } from 'next-auth/react';
+import React, { useState } from "react";
 
 interface CreateTaskFormProps {
   onTaskCreated: () => void;
 }
 
-const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated }) => {
-  const { data: session, status } = useSession();
-
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const CreateTaskForm = ({ onTaskCreated }: CreateTaskFormProps) => {
+  const [title, setTitle] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Evita enviar requisição sem estar autenticado
-    if (status !== 'authenticated') {
-      setError('Sessão expirada. Faça login novamente.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
     try {
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-        }),
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description, completed: false }),
       });
 
-      if (!response.ok) {
-        let errorMessage = 'Erro ao criar tarefa';
+      if (!response.ok) throw new Error("Falha ao criar tarefa");
 
-        try {
-          const contentType = response.headers.get('content-type');
-
-          // Verifica se o erro é JSON e extrai de forma segura
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorData.message || errorMessage;
-          } else {
-            // Se não for JSON, tenta ler como texto
-            const text = await response.text();
-            errorMessage = text || errorMessage;
-          }
-        } catch (err) {
-          console.error('Erro ao interpretar resposta de erro:', err);
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      // Limpa o formulário e chama callback para recarregar a lista
-      setTitle('');
-      setDescription('');
-      onTaskCreated();
-
+      onTaskCreated(); // Atualiza a lista de tarefas
+      setTitle("");
+      setDescription("");
     } catch (error: any) {
-      console.error('Erro detalhado:', error);
-      setError(error.message || 'Erro ao criar tarefa');
-    } finally {
-      setIsSubmitting(false);
+      alert(error.message);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6 bg-white/10 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700">
       <div>
+        <label htmlFor="title" className="block text-white font-semibold text-lg mb-2">
+          Título
+        </label>
         <input
           type="text"
-          placeholder="Título"
+          id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-lg"
-          required
-          disabled={isSubmitting}
+          placeholder="Digite o título da tarefa"
+          className="w-full p-4 bg-gray-700 text-white rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
         />
       </div>
+
       <div>
+        <label htmlFor="description" className="block text-white font-semibold text-lg mb-2">
+          Descrição
+        </label>
         <textarea
-          placeholder="Descrição"
+          id="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-lg"
-          required
-          disabled={isSubmitting}
+          placeholder="Digite a descrição da tarefa"
+          className="w-full p-4 bg-gray-700 text-white rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-70 transition-all duration-300"
         />
       </div>
-      {error && (
-        <div className="text-red-500 text-sm">{error}</div>
-      )}
+
       <button
         type="submit"
-        className="w-full p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        disabled={isSubmitting || status !== 'authenticated'}
+        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg shadow-md hover:brightness-110 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-blue-500"
       >
-        {isSubmitting ? 'Criando...' : 'Criar Tarefa'}
+        Criar Tarefa
       </button>
     </form>
   );

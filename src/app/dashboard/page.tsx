@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Head from 'next/head';
 import CreateTaskForm from "@/createTask/page";
-import TaskForm from "../../taskForm/page"; // Importe o novo componente genérico
+import TaskForm from "../../taskForm/page"; // Componente genérico
 
 interface Task {
   id: string;
@@ -24,17 +24,13 @@ const ClientDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Busca todas as tarefas
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await fetch('/api/tasks', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         cache: 'no-store'
       });
 
@@ -50,16 +46,13 @@ const ClientDashboard = () => {
 
       const data = await response.json();
       setTasks(data);
-
     } catch (error: any) {
-      console.error('Erro ao buscar tarefas:', error);
       setError(error.message || 'Erro ao carregar tarefas');
     } finally {
       setLoading(false);
     }
   };
 
-  // Alterna o status de conclusão da tarefa
   const toggleTaskCompletion = async (id: string, completed: boolean) => {
     try {
       const response = await fetch(`/api/tasks/${id}`, {
@@ -68,67 +61,46 @@ const ClientDashboard = () => {
         body: JSON.stringify({ completed: !completed }),
       });
 
-      if (response.status === 401) {
-        throw new Error('Sessão expirada');
-      }
+      if (response.status === 401) throw new Error('Sessão expirada');
+      if (!response.ok) throw new Error('Falha ao atualizar tarefa');
 
-      if (!response.ok) {
-        throw new Error('Falha ao atualizar tarefa');
-      }
-
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
+      setTasks(prev =>
+        prev.map(task =>
           task.id === id ? { ...task, completed: !completed } : task
         )
       );
-
     } catch (error: any) {
       setError(error.message);
     }
   };
 
-  // Deleta uma tarefa
   const deleteTask = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
-
     try {
-      const response = await fetch(`/api/tasks/${id}`, {
-        method: 'DELETE'
-      });
+      const response = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
 
-      if (response.status === 401) {
-        throw new Error('Sessão expirada');
-      }
+      if (response.status === 401) throw new Error('Sessão expirada');
+      if (!response.ok) throw new Error('Falha ao excluir tarefa');
 
-      if (!response.ok) {
-        throw new Error('Falha ao excluir tarefa');
-      }
-
-      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-
+      setTasks(prev => prev.filter(task => task.id !== id));
     } catch (error: any) {
       setError(error.message);
     }
   };
 
-  // Carrega as tarefas após autenticação
   useEffect(() => {
     if (status === 'loading') return;
-
     if (status === 'unauthenticated') {
       router.push('/?message=Faça login para acessar');
       return;
     }
-
-    if (status === 'authenticated' && session) {
-      fetchTasks();
-    }
+    if (status === 'authenticated' && session) fetchTasks();
   }, [status, session]);
 
   if (status === "loading") {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 border-opacity-70"></div>
         <p className="text-lg text-gray-300">Carregando seu dashboard...</p>
       </div>
     );
@@ -137,67 +109,66 @@ const ClientDashboard = () => {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black p-6 text-gray-100 font-sans">
       <Head>
-        <title key="title">Dashboard</title>
+        <title>Dashboard</title>
         <meta name="description" content="Painel de controle de tarefas" />
       </Head>
 
       {error && (
-        <div className="fixed top-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg flex items-center z-50">
+        <div className="fixed top-4 right-4 bg-red-600 text-white px-6 py-4 rounded-lg shadow-xl flex items-center z-50 animate-fade-in">
           <span>{error}</span>
           <button
             onClick={() => setError(null)}
-            className="ml-4 font-bold hover:text-gray-200"
+            className="ml-4 font-bold hover:text-gray-300"
           >
             ×
           </button>
         </div>
       )}
 
-      <header className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
+      <header className="bg-white/5 backdrop-blur-md shadow-xl rounded-2xl p-6 mb-8 border border-gray-700">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-            <p className="text-gray-300 mt-2">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">Dashboard</h1>
+            <p className="text-gray-300 mt-2 text-lg">
               {session.user?.name ? `Bem-vindo, ${session.user.name}!` : "Carregando..."}
             </p>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/' })}
-            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-300"
+            className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl shadow-md hover:brightness-110 hover:scale-105 transition-all duration-300 active:scale-95 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-400"
           >
             Sair
           </button>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
-          <h2 className="text-2xl font-semibold text-white mb-4">Criar Nova Tarefa</h2>
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Criar Nova Tarefa */}
+        <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700">
+          <h2 className="text-2xl font-bold text-white mb-4">Criar Nova Tarefa</h2>
           <CreateTaskForm onTaskCreated={fetchTasks} />
         </div>
 
-        <div className="bg-gray-700 shadow-xl rounded-2xl p-6 mb-8 border border-gray-600">
-          <h2 className="text-2xl font-semibold text-white mb-4">Tarefas Cadastradas</h2>
-
+        {/* Tarefas Cadastradas */}
+        <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700">
+          <h2 className="text-2xl font-bold text-white mb-4">Tarefas Cadastradas</h2>
           {loading ? (
             <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-blue-500" />
             </div>
           ) : tasks.length === 0 ? (
             <p className="text-gray-400 italic text-center py-8">Nenhuma tarefa encontrada</p>
           ) : (
             <ul className="space-y-4">
-              {tasks.map((task) => (
+              {tasks.map(task => (
                 <li
                   key={task.id}
-                  className={`bg-gray-600 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 flex justify-between items-center border ${task.completed ? 'border-green-500' : 'border-gray-500'
-                    }`}
+                  className={`bg-gray-800/60 backdrop-blur-md p-4 rounded-xl shadow-sm transition-all duration-300 flex justify-between items-center border ${task.completed ? 'border-green-500' : 'border-gray-600'}`}
                 >
                   <div className="flex-1">
-                    <h3 className={`text-lg font-semibold ${task.completed ? 'text-green-300 line-through' : 'text-white'
-                      }`}>
+                    <h3 className={`text-lg font-semibold ${task.completed ? 'text-green-400 line-through' : 'text-white'}`}>
                       {task.title}
                     </h3>
                     <p className="text-gray-300">{task.description}</p>
@@ -205,23 +176,22 @@ const ClientDashboard = () => {
                   <div className="flex space-x-2">
                     <button
                       onClick={() => setEditingTask(task)}
-                      className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors duration-200"
-                      title="Editar tarefa"
+                      className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-transform hover:scale-110"
+                      title="Editar"
                     >
                       ✏️
                     </button>
                     <button
                       onClick={() => toggleTaskCompletion(task.id, task.completed)}
-                      className={`p-2 rounded-lg transition-colors duration-200 ${task.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'
-                        } text-white`}
+                      className={`p-2 text-white rounded-lg transition-transform hover:scale-110 ${task.completed ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                       title={task.completed ? 'Marcar como pendente' : 'Marcar como concluída'}
                     >
                       {task.completed ? '✅' : '⬜'}
                     </button>
                     <button
                       onClick={() => deleteTask(task.id)}
-                      className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors duration-200"
-                      title="Excluir tarefa"
+                      className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-transform hover:scale-110"
+                      title="Excluir"
                     >
                       🗑️
                     </button>
@@ -233,22 +203,22 @@ const ClientDashboard = () => {
         </div>
       </div>
 
-      {/* Substituindo o EditTaskModal por TaskForm genérico */}
+      {/* Modal de Edição */}
       {editingTask && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-    <div className="bg-gray-800 p-6 rounded-2xl w-full max-w-xl border border-gray-600 shadow-xl">
-      <h2 className="text-xl font-bold text-white mb-4">Editar Tarefa</h2>
-      <TaskForm
-        task={editingTask}
-        onClose={() => setEditingTask(null)}
-        onTaskSaved={() => {
-          fetchTasks();
-          setEditingTask(null);
-        }}
-      />
-    </div>
-  </div>
-)}
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm z-50">
+          <div className="bg-gray-800 p-6 rounded-2xl w-full max-w-xl border border-gray-600 shadow-xl animate-fade-in">
+            <h2 className="text-xl font-bold text-white mb-4">Editar Tarefa</h2>
+            <TaskForm
+              task={editingTask}
+              onClose={() => setEditingTask(null)}
+              onTaskSaved={() => {
+                fetchTasks();
+                setEditingTask(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
