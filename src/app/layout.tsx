@@ -40,7 +40,7 @@ export default function RootLayout({ children, session }: RootLayoutProps) {
           <Header />
           
           {/* Main mantido com exatamente as mesmas classes */}
-          <main className="min-h-[calc(100vh-64px)]">
+          <main className="pt-20 min-h-[calc(100vh-64px)]">
             {children}
           </main>
         </SessionProvider>
