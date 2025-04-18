@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Head from 'next/head';
 import CreateTaskForm from "@/createTask/page";
-import EditTaskModal from "../editTaskModal/page";
+import TaskForm from "../taskForm/page";
 
 interface Task {
   id: string;
@@ -239,12 +239,13 @@ const ClientDashboard = () => {
       </div>
 
       {editingTask && (
-        <EditTaskModal
-          task={editingTask}
-          onClose={() => setEditingTask(null)}
-          onTaskUpdated={fetchTasks}
-        />
-      )}
+  <TaskForm
+    task={editingTask}
+    onClose={() => setEditingTask(null)}
+    onTaskUpdated={fetchTasks}   // Passando a função onTaskUpdated
+    onTaskSaved={() => {}}       // Passando uma função (mesmo que vazia, se não for necessária nesse caso)
+  />
+)}
     </div>
   );
 };

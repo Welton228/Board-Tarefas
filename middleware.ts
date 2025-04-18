@@ -1,44 +1,50 @@
+// middleware.ts
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import type { NextRequest } from 'next/server';
 
+// Idiomas suportados
+const SUPPORTED_LOCALES = ['pt', 'en', 'es'];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // 🔍 Detecta o locale da URL
+  const pathnameParts = pathname.split('/');
+  const locale = SUPPORTED_LOCALES.includes(pathnameParts[1]) ? pathnameParts[1] : 'pt';
+
   try {
-    // 🔐 Obtém o token JWT (raw = string JWT, não decodificado)
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
       secureCookie: process.env.NODE_ENV === 'production',
-      raw: false, // <- trocamos para FALSE para ter acesso ao objeto decodificado
+      raw: false,
     });
 
-    // 🟢 Rotas públicas (acessíveis sem login)
-    const publicRoutes = ['/', '/login', '/auth/error'];
-    const isPublicRoute = publicRoutes.some((route) =>
-      pathname === route || pathname.startsWith(route)
+    const publicRoutes = ['login', 'auth/error', ''];
+    const currentPath = pathnameParts.slice(2).join('/');
+    const isPublicRoute = publicRoutes.some(
+      (route) => currentPath === route || currentPath.startsWith(route)
     );
 
-    // 🔴 Rotas protegidas (requerem autenticação)
     const isProtectedRoute =
-      pathname.startsWith('/dashboard') ||
-      pathname.startsWith('/api/tasks') ||
-      pathname.startsWith('/api/protected');
+      currentPath.startsWith('dashboard') ||
+      currentPath.startsWith('api/tasks') ||
+      currentPath.startsWith('api/protected');
 
-    // ✅ Usuário logado tentando acessar /login → redireciona para /dashboard
-    if (pathname === '/login' && token) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+    // ✅ Usuário logado tentando acessar /[locale]/login → redireciona para /[locale]/dashboard
+    if (currentPath === 'login' && token) {
+      return NextResponse.redirect(new URL(`/${locale}/dashboard`, request.url));
     }
 
-    // ❌ Rota protegida sem token → redireciona para login
+    // ❌ Rota protegida sem token → redireciona para /[locale]/login
     if (isProtectedRoute && !token) {
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('callbackUrl', pathname);
+      const loginUrl = new URL(`/${locale}/login`, request.url);
+      loginUrl.searchParams.set('callbackUrl', `/${locale}/${currentPath}`);
       return NextResponse.redirect(loginUrl);
     }
 
-    // ⛔ Token com erro de renovação
+    // ⛔ Token expirado
     if (
       isProtectedRoute &&
       token &&
@@ -46,34 +52,32 @@ export async function middleware(request: NextRequest) {
       'error' in token &&
       token.error === 'RefreshAccessTokenError'
     ) {
-      const loginUrl = new URL('/login', request.url);
+      const loginUrl = new URL(`/${locale}/login`, request.url);
       loginUrl.searchParams.set('error', 'SessionExpired');
       return NextResponse.redirect(loginUrl);
     }
 
-    // 🔒 Rota de API protegida sem token → erro 401
-    if (pathname.startsWith('/api/protected') && !token) {
+    // 🔒 Proteção de API
+    if (currentPath.startsWith('api/protected') && !token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 🧠 Rota protegida com token → evita cache
     if (isProtectedRoute) {
       const response = NextResponse.next();
       response.headers.set('Cache-Control', 'no-store, max-age=0');
       return response;
     }
 
-    // 👍 Continua normalmente para rotas públicas ou não protegidas
     return NextResponse.next();
   } catch (error) {
     console.error('[MIDDLEWARE ERROR]', error);
-    return NextResponse.redirect(new URL('/auth/error', request.url));
+    return NextResponse.redirect(new URL(`/${locale}/auth/error`, request.url));
   }
 }
 
 // 🧭 Define onde o middleware será executado
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$|auth).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

@@ -12,9 +12,10 @@ interface TaskFormProps {
   };
   onClose?: () => void;
   onTaskSaved: () => void;
+  onTaskUpdated?: () => void; // Adicionando onTaskUpdated como opcional
 }
 
-const TaskForm: React.FC<TaskFormProps> = ({ task, onClose, onTaskSaved }) => {
+const TaskForm: React.FC<TaskFormProps> = ({ task, onClose, onTaskSaved, onTaskUpdated }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const isEditing = !!task;
@@ -40,7 +41,11 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onClose, onTaskSaved }) => {
     });
 
     if (response.ok) {
-      onTaskSaved();
+      if (isEditing && onTaskUpdated) {
+        onTaskUpdated(); // Se for edição, chamamos onTaskUpdated
+      } else {
+        onTaskSaved(); // Se for criação, chamamos onTaskSaved
+      }
     }
   };
 
