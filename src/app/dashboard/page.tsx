@@ -130,7 +130,7 @@ const ClientDashboard = () => {
       <header className="bg-white/5 backdrop-blur-md shadow-xl rounded-2xl p-6 mb-8 border border-gray-700">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">Dashboard</h1>
+            <h1 className="text-4xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">Dashboard</h1>
             <p className="text-gray-300 mt-2 text-lg">
               {session.user?.name ? `Bem-vindo, ${session.user.name}!` : "Carregando..."}
             </p>
@@ -144,7 +144,7 @@ const ClientDashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Criar Nova Tarefa */}
         <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700">
           <h2 className="text-2xl font-bold text-white mb-4">Criar Nova Tarefa</h2>
@@ -159,7 +159,7 @@ const ClientDashboard = () => {
               <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-blue-500" />
             </div>
           ) : tasks.length === 0 ? (
-            <p className="text-gray-400 italic text-center py-8">Nenhuma tarefa encontrada</p>
+            <p className="text-gray-400 italic text-center py-8 sm:text-sm lg:text-base">Nenhuma tarefa encontrada</p>
           ) : (
             <ul className="space-y-4">
               {tasks.map(task => (
@@ -206,7 +206,7 @@ const ClientDashboard = () => {
       {/* Modal de Edição */}
       {editingTask && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm z-50">
-          <div className="bg-gray-800 p-6 rounded-2xl w-full max-w-xl border border-gray-600 shadow-xl animate-fade-in">
+          <div className="bg-gray-800 p-6 rounded-2xl w-full sm:max-w-lg max-w-xl border border-gray-600 shadow-xl animate-fade-in">
             <h2 className="text-xl font-bold text-white mb-4">Editar Tarefa</h2>
             <TaskForm
               task={editingTask}
