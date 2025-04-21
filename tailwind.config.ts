@@ -9,7 +9,7 @@ export default {
   theme: {
     screens: {
       xs: {'max': '480px'},
-      sm: {'max': '412px'},
+      sm: {'max': '342px'},
     },
     extend: {
       padding: {

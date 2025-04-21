@@ -18,7 +18,7 @@ const Header = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Retorna a inicial do nome
+  // Retorna a inicial do nome do usuário
   const getInitial = (name?: string | null) => {
     return name ? name.charAt(0).toUpperCase() : '';
   };
@@ -53,12 +53,12 @@ const Header = () => {
         {/* Área do usuário */}
         {status === "loading" ? null : session ? (
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Letra inicial */}
+            {/* Letra inicial do nome */}
             <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/20 text-white font-bold text-sm sm:text-base">
               {getInitial(session.user?.name)}
             </div>
 
-            {/* Nome completo só em telas ≥640px */}
+            {/* Nome completo exibido apenas em telas ≥ 640px */}
             <span className="hidden sm:inline text-white font-medium text-base">
               {session.user?.name}
             </span>
@@ -69,7 +69,8 @@ const Header = () => {
               onClick={() => signOut()}
             >
               <LogOut className="w-5 h-5" />
-              <span className="hidden sm:inline">Sair</span>
+              {/* Exibe o texto "Sair" a partir de 480px */}
+              <span className="hidden min-[480px]:inline">Sair</span>
             </button>
           </div>
         ) : (
@@ -78,7 +79,8 @@ const Header = () => {
             onClick={() => signIn("google")}
           >
             <LogIn className="w-5 h-5" />
-            <span className="hidden sm:inline">
+            {/* Exibe o texto "Acessar +" a partir de 480px */}
+            <span className="hidden min-[480px]:inline">
               Acessar <span className="text-red-500">+</span>
             </span>
           </button>

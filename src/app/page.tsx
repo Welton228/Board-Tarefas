@@ -17,39 +17,42 @@ const Home = () => {
   }, [searchParams]);
 
   return (
-    <section className="min-h-screen bg-gradient-to-br from-purple-800 via-indigo-900 to-blue-800 flex flex-col justify-center items-center p-6">
-      {/* Mensagem de alerta, se houver */}
+    <section className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900/70 flex flex-col justify-center items-center px-6 py-12">
+      {/* Alerta (caso exista mensagem na URL) */}
       {message && (
-        <div className="bg-red-600 text-white p-4 rounded-xl shadow-lg mb-6 transform transition-all duration-500 opacity-0 animate-messageAppear">
+        <div className="bg-red-600 text-white p-4 px-6 rounded-xl shadow-lg mb-6 animate-messageAppear">
           {message}
         </div>
       )}
 
-      <main className="flex flex-col justify-center items-center w-full max-w-7xl">
-        {/* Imagem Hero */}
-        <div className="flex flex-col justify-center items-center mb-8 w-full max-w-[480px]">
+      <main className="flex flex-col justify-center items-center w-full max-w-7xl text-center">
+        {/* Imagem principal com efeito */}
+        <div className="mb-10 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg w-full">
           <Image
             alt="Logo Tarefas+"
             src={heroImg}
             priority
             quality={85}
             placeholder="blur"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 480px"
-            className="w-full h-auto object-contain transform transition-all duration-700 ease-in-out hover:scale-105"
+            sizes="100vw"
+            className="w-full h-auto object-contain transition-transform duration-500 hover:scale-105 hover:brightness-110"
           />
         </div>
 
-        <h1 className="text-white text-4xl sm:text-3xl text-center font-bold leading-normal mx-7 mb-6 animate-fadeIn">
-          Organize seus estudos e tarefas de forma simples e eficiente
+        {/* Título principal */}
+        <h1 className="text-white text-4xl sm:text-5xl font-extrabold leading-tight mb-6 drop-shadow-lg animate-fadeIn">
+          Organize seus estudos <br className="hidden sm:inline" />
+          e tarefas com eficiência
         </h1>
 
-        <div className="flex items-center justify-center space-x-6 w-full xs:flex-col">
-          <section className="bg-gradient-to-r from-gray-800 to-gray-700 text-white py-4 px-12 rounded-xl shadow-xl text-lg font-semibold text-center xs:w-[70%] xs:mb-5 hover:scale-105 transition-transform duration-300 cursor-pointer transform hover:translate-y-[-6px] hover:shadow-2xl">
-            <span>+12 posts</span>
-          </section>
-          <section className="bg-gradient-to-r from-gray-800 to-gray-700 text-white py-4 px-12 rounded-xl shadow-xl text-lg font-semibold text-center xs:w-[70%] xs:mb-5 hover:scale-105 transition-transform duration-300 cursor-pointer transform hover:translate-y-[-6px] hover:shadow-2xl">
-            <span>+90 comentários</span>
-          </section>
+        {/* Destaques com efeito 3D e responsividade */}
+        <div className="flex flex-wrap justify-center items-center gap-6 w-full max-w-2xl mt-4">
+          <div className="bg-white/10 backdrop-blur-md text-white py-5 px-10 rounded-2xl shadow-xl font-semibold text-lg hover:scale-105 transform hover:-translate-y-2 transition-all duration-300 border border-white/20 w-[220px] text-center">
+            📚 <span className="block mt-2">+12 posts</span>
+          </div>
+          <div className="bg-white/10 backdrop-blur-md text-white py-5 px-10 rounded-2xl shadow-xl font-semibold text-lg hover:scale-105 transform hover:-translate-y-2 transition-all duration-300 border border-white/20 w-[220px] text-center">
+            💬 <span className="block mt-2">+90 comentários</span>
+          </div>
         </div>
       </main>
     </section>
