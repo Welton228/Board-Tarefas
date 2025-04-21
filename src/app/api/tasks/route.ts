@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, description } = body;
+    const { title, description }: { title: string; description?: string } = body;
 
     // Validação do campo 'title'
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -84,5 +84,5 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 }
     );
-  }  
+  }
 }
