@@ -32,7 +32,7 @@ const CreateTaskForm = ({ onTaskCreated }: CreateTaskFormProps) => {
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-full max-w-2xl mx-auto bg-white/5 border border-white/10 backdrop-blur-lg p-6 rounded-2xl shadow-xl space-y-6 animate-fade-in"
+      className="w-full max-w-full mx-auto bg-white/5 border border-white/10 backdrop-blur-lg p-6 rounded-2xl shadow-xl space-y-6 animate-fade-in"
     >
       <h2 className="text-white text-2xl font-bold mb-4 text-center">Nova Tarefa</h2>
 
