@@ -1,3 +1,4 @@
+// Exemplo de renderização dinâmica
 'use client';
 
 import React, { useEffect, useState } from 'react';

@@ -6,11 +6,8 @@ import { getToken } from '@/lib/auth';
  * PUT /api/tasks/[id]
  * Atualiza título, descrição ou status da tarefa do usuário autenticado.
  */
-export async function PUT(
-  req: NextRequest,
-  context: { params: { id: string } } // O id da URL é uma string
-) {
-  const { id } = context.params; // Obtém o parâmetro 'id' da URL
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params; // Obtém o parâmetro 'id' da URL
 
   // Converte o 'id' de string para número
   const taskId = parseInt(id, 10);
@@ -69,11 +66,8 @@ export async function PUT(
  * DELETE /api/tasks/[id]
  * Exclui a tarefa do usuário autenticado.
  */
-export async function DELETE(
-  req: NextRequest,
-  context: { params: { id: string } } // O id da URL é uma string
-) {
-  const { id } = context.params; // Obtém o parâmetro 'id' da URL
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params; // Obtém o parâmetro 'id' da URL
 
   // Converte o 'id' de string para número
   const taskId = parseInt(id, 10);

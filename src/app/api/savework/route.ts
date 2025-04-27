@@ -24,8 +24,9 @@ export async function POST(req: Request) {
 
     // 2. Validar dados da requisição
     const body = await req.json();
+    console.log("Dados recebidos:", body); // Log de depuração
     const validatedData = taskSchema.parse(body);
-    
+
     // 3. Salvar no banco de dados
     const newTask = await prisma.task.create({
       data: {

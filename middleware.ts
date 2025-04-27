@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import type { NextRequest } from 'next/server';
@@ -14,6 +13,7 @@ export async function middleware(request: NextRequest) {
   const locale = SUPPORTED_LOCALES.includes(pathnameParts[1]) ? pathnameParts[1] : 'pt';
 
   try {
+    // Obtém o token de autenticação do usuário
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
@@ -21,12 +21,16 @@ export async function middleware(request: NextRequest) {
       raw: false,
     });
 
+    // Rota pública, onde o token não é necessário
     const publicRoutes = ['login', 'auth/error', ''];
     const currentPath = pathnameParts.slice(2).join('/');
+
+    // Verifica se a rota atual é pública
     const isPublicRoute = publicRoutes.some(
       (route) => currentPath === route || currentPath.startsWith(route)
     );
 
+    // Define rotas protegidas, que exigem autenticação
     const isProtectedRoute =
       currentPath.startsWith('dashboard') ||
       currentPath.startsWith('api/tasks') ||
@@ -49,7 +53,7 @@ export async function middleware(request: NextRequest) {
       isProtectedRoute &&
       token &&
       typeof token === 'object' &&
-      'error' in token &&
+      'error' in token && // Verifica se o token é um objeto e contém a propriedade 'error'
       token.error === 'RefreshAccessTokenError'
     ) {
       const loginUrl = new URL(`/${locale}/login`, request.url);
@@ -57,19 +61,22 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // 🔒 Proteção de API
+    // 🔒 Proteção de API: acesso negado a rotas de API protegidas sem token
     if (currentPath.startsWith('api/protected') && !token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Rota protegida com token válido, prossegue com a execução
     if (isProtectedRoute) {
       const response = NextResponse.next();
       response.headers.set('Cache-Control', 'no-store, max-age=0');
       return response;
     }
 
+    // Caso contrário, prossiga com a requisição
     return NextResponse.next();
   } catch (error) {
+    // Em caso de erro, redireciona para uma página de erro
     console.error('[MIDDLEWARE ERROR]', error);
     return NextResponse.redirect(new URL(`/${locale}/auth/error`, request.url));
   }
@@ -78,6 +85,6 @@ export async function middleware(request: NextRequest) {
 // 🧭 Define onde o middleware será executado
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$).*)', // Exclui as rotas de assets estáticos e imagens
   ],
 };
