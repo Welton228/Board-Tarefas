@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Head from "next/head";
 import CreateTaskForm from "@/createTask/page";
 import TaskForm from "../../taskForm/page";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";
 
 /**
- * Interface que representa a estrutura de uma tarefa
+ * Interface para representar uma tarefa (versão simplificada para performance)
  */
 interface Task {
   id: string;
@@ -17,221 +18,290 @@ interface Task {
   description: string;
   completed: boolean;
   userId: string;
-  createdAt?: Date;
+  updatedAt?: string; // Adicionado para controle de cache
+}
+
+/**
+ * Interface para notificações do sistema
+ */
+interface Notification {
+  message: string;
+  type: 'success' | 'error';
+  id: string;
 }
 
 /**
  * Componente principal do Dashboard
  */
 const ClientDashboard = () => {
+  // Dados de autenticação e roteamento
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Estados locais
+  // Estados otimizados
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false); // Inicia como false para skeleton loading
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isHoveringHeader, setIsHoveringHeader] = useState(false);
 
-  // Referências
+  // Referências para controle
   const modalRef = useRef<HTMLDivElement>(null);
   const isMounted = useRef(true);
-  const errorTimeoutRef = useRef<NodeJS.Timeout>();
-  const successTimeoutRef = useRef<NodeJS.Timeout>();
+  const controllerRef = useRef<AbortController>();
+  const lastFetchRef = useRef<number>(0);
+
+  // Separa tarefas concluídas e pendentes (otimização de renderização)
+  const [pendingTasks, completedTasks] = useMemo(() => {
+    const pending = [];
+    const completed = [];
+    for (const task of tasks) {
+      if (task.completed) completed.push(task);
+      else pending.push(task);
+    }
+    return [pending, completed];
+  }, [tasks]);
 
   /**
-   * Busca as tarefas do usuário
+   * Mostra notificação na tela (com auto-fechamento)
    */
-  const fetchTasks = async () => {
-    if (!isMounted.current) return;
+  const showNotification = useCallback((message: string, type: 'success' | 'error') => {
+    const id = Date.now().toString();
+    setNotifications((prev) => [...prev, { message, type, id }]);
     
-    setLoading(true);
-    setError(null);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 5000);
+  }, []);
 
+  /**
+   * Busca tarefas com otimizações:
+   * - Cache controlado
+   * - AbortController para cancelar requisições pendentes
+   * - Pré-carregamento
+   */
+  const fetchTasks = useCallback(async () => {
+    // Cancela requisição anterior se existir
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+    }
+    
+    const now = Date.now();
+    // Se a última requisição foi há menos de 2 segundos, ignora
+    if (now - lastFetchRef.current < 2000) return;
+    
+    lastFetchRef.current = now;
+    setLoading(true);
+    
     try {
-      const response = await fetch("/api/tasks", {
+      // Cria novo controller para a requisição
+      controllerRef.current = new AbortController();
+      
+      const response = await fetch(`/api/tasks?ts=${now}`, {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache"
+        },
+        signal: controllerRef.current.signal,
+        next: { revalidate: 0 }
       });
 
-      // Tratamento de sessão expirada
       if (response.status === 401) {
-        await handleSessionExpired();
+        await signOut({ callbackUrl: "/login?error=SessionExpired" });
         return;
       }
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Erro ao buscar tarefas");
+        throw new Error(await response.text() || "Erro ao buscar tarefas");
       }
 
       const data: Task[] = await response.json();
-      if (isMounted.current) setTasks(data);
-    } catch (error: any) {
       if (isMounted.current) {
-        setError(error?.message || "Erro ao carregar tarefas");
+        setTasks(data);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && isMounted.current) {
+        showNotification(error.message || "Erro ao carregar tarefas", 'error');
       }
     } finally {
-      if (isMounted.current) setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [showNotification]);
 
   /**
-   * Alterna o status de conclusão da tarefa
+   * Cria uma nova tarefa (com atualização otimista)
    */
-  const toggleTaskCompletion = async (id: string, completed: boolean) => {
+  const createTask = useCallback(async (taskData: { title: string; description: string }) => {
+    const optimisticTask: Task = {
+      id: `temp-${Date.now()}`,
+      ...taskData,
+      completed: false,
+      userId: session?.user?.id || ''
+    };
+
+    // Atualização otimista
+    setTasks(prev => [optimisticTask, ...prev]);
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskData),
+      });
+
+      if (response.status === 401) {
+        await signOut({ callbackUrl: "/login?error=SessionExpired" });
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Falha ao criar tarefa");
+      }
+
+      const newTask = await response.json();
+      
+      // Substitui a tarefa temporária pela real
+      setTasks(prev => prev.map(t => 
+        t.id === optimisticTask.id ? newTask : t
+      ));
+
+      showNotification("Tarefa criada com sucesso!", 'success');
+      return newTask;
+    } catch (error: any) {
+      // Reverte em caso de erro
+      setTasks(prev => prev.filter(t => t.id !== optimisticTask.id));
+      showNotification(error.message || "Erro ao criar tarefa", 'error');
+      throw error;
+    }
+  }, [showNotification, session?.user?.id]);
+
+  /**
+   * Alterna status de conclusão da tarefa (otimizado)
+   */
+  const toggleTaskCompletion = useCallback(async (id: string, completed: boolean) => {
+    // Otimista UI update
+    setTasks(prev => prev.map(task => 
+      task.id === id ? { ...task, completed: !completed } : task
+    ));
+
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: !completed }),
-        cache: "no-store",
       });
 
       if (response.status === 401) {
-        await handleSessionExpired();
+        await signOut({ callbackUrl: "/login?error=SessionExpired" });
         return;
       }
 
-      if (!response.ok) throw new Error("Falha ao atualizar tarefa");
+      if (!response.ok) {
+        throw new Error("Falha ao atualizar tarefa");
+      }
 
-      setTasks((prev) =>
-        prev.map((task) =>
-          task.id === id ? { ...task, completed: !completed } : task
-        )
-      );
+      // Atualiza apenas se necessário (evita re-render desnecessário)
+      const updatedTask = await response.json();
+      setTasks(prev => prev.map(task => 
+        task.id === id ? { ...task, ...updatedTask } : task
+      ));
     } catch (error: any) {
-      setError(error.message || "Erro ao atualizar tarefa");
+      // Reverte em caso de erro
+      setTasks(prev => prev.map(task => 
+        task.id === id ? { ...task, completed } : task
+      ));
+      showNotification(error.message || "Erro ao atualizar tarefa", 'error');
     }
-  };
+  }, [showNotification]);
 
   /**
-   * Exclui uma tarefa
+   * Exclui tarefa com confirmação e otimização
    */
-  const deleteTask = async (id: string) => {
+  const deleteTask = useCallback(async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta tarefa?")) return;
+
+    // Otimista UI update
+    const deletedTask = tasks.find(t => t.id === id);
+    setTasks(prev => prev.filter(task => task.id !== id));
 
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: "DELETE",
-        cache: "no-store",
       });
 
       if (response.status === 401) {
-        await handleSessionExpired();
+        await signOut({ callbackUrl: "/login?error=SessionExpired" });
         return;
       }
 
-      if (!response.ok) throw new Error("Falha ao excluir tarefa");
-
-      setTasks((prev) => prev.filter((task) => task.id !== id));
-      showSuccessMessage("Tarefa excluída com sucesso!");
-    } catch (error: any) {
-      setError(error.message || "Erro ao excluir tarefa");
-    }
-  };
-
-  /**
-   * Manipula sessão expirada
-   */
-  const handleSessionExpired = async () => {
-    await signOut({ callbackUrl: "/login?error=SessionExpired" });
-  };
-
-  /**
-   * Exibe mensagem de sucesso temporária
-   */
-  const showSuccessMessage = (message: string) => {
-    setSuccessMessage(message);
-    if (successTimeoutRef.current) {
-      clearTimeout(successTimeoutRef.current);
-    }
-    successTimeoutRef.current = setTimeout(() => {
-      setSuccessMessage(null);
-    }, 5000);
-  };
-
-  /**
-   * Fecha o modal ao clicar fora ou pressionar ESC
-   */
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setEditingTask(null);
-    };
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-        setEditingTask(null);
+      if (!response.ok) {
+        throw new Error("Falha ao excluir tarefa");
       }
-    };
 
-    if (editingTask) {
-      document.addEventListener("keydown", handleKeyDown);
-      document.addEventListener("mousedown", handleClickOutside);
+      showNotification("Tarefa excluída com sucesso!", 'success');
+    } catch (error: any) {
+      // Reverte em caso de erro
+      if (deletedTask) {
+        setTasks(prev => [...prev, deletedTask].sort((a, b) => 
+          new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+        ));
+      }
+      showNotification(error.message || "Erro ao excluir tarefa", 'error');
+    }
+  }, [tasks, showNotification]);
+
+  // Efeitos para gerenciar eventos e sessão
+  useEffect(() => {
+    const controller = new AbortController();
+    
+    // Pré-carrega assim que a sessão estiver disponível
+    if (status === "authenticated") {
+      fetchTasks();
     }
 
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [editingTask]);
+    return () => controller.abort();
+  }, [status, fetchTasks]);
 
-  /**
-   * Verifica sessão e carrega tarefas
-   */
   useEffect(() => {
-    if (status === "loading") return;
-
     if (status === "unauthenticated") {
       router.push("/login?callbackUrl=/dashboard");
-      return;
     }
+  }, [status, router]);
 
-    if (status === "authenticated" && session) {
-      fetchTasks();
-      
-      // Exibe mensagem de boas-vindas se vier de login
-      const fromLogin = searchParams.get("fromLogin");
-      if (fromLogin) {
-        showSuccessMessage(`Bem-vindo(a) de volta, ${session.user?.name || ""}!`);
-      }
-    }
-  }, [status, session, router, searchParams]);
+  // Skeleton loading para melhor UX
+  const renderTaskSkeletons = () => (
+    [...Array(3)].map((_, i) => (
+      <motion.div
+        key={`skeleton-${i}`}
+        initial={{ opacity: 0.5 }}
+        animate={{ opacity: 1 }}
+        transition={{ repeat: Infinity, repeatType: "reverse", duration: 1 }}
+        className="bg-gray-800/50 rounded-xl p-4 h-20 mb-3"
+      />
+    ))
+  );
 
-  /**
-   * Limpa timeouts e evita memory leaks
-   */
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
-      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
-    };
-  }, []);
-
-  /**
-   * Auto-fecha mensagens de erro após 5 segundos
-   */
-  useEffect(() => {
-    if (error) {
-      if (errorTimeoutRef.current) {
-        clearTimeout(errorTimeoutRef.current);
-      }
-      errorTimeoutRef.current = setTimeout(() => {
-        setError(null);
-      }, 5000);
-    }
-  }, [error]);
-
-  // Tela de carregamento
+  // Renderização condicional
   if (status === "loading") {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 border-opacity-70"></div>
-        <p className="text-lg text-gray-300">Carregando seu dashboard...</p>
+      <div className="flex flex-col items-center justify-center h-screen gap-4 bg-gradient-to-br from-gray-900 to-gray-950">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="w-16 h-16 border-4 border-t-transparent border-r-blue-500 border-b-purple-600 border-l-pink-500 rounded-full"
+        ></motion.div>
+        <motion.p 
+          initial={{ opacity: 0.5 }}
+          animate={{ opacity: 1 }}
+          transition={{ repeat: Infinity, repeatType: "reverse", duration: 1.5 }}
+          className="text-lg text-gray-300 font-light"
+        >
+          Preparando seu espaço...
+        </motion.p>
       </div>
     );
   }
@@ -239,236 +309,345 @@ const ClientDashboard = () => {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black p-6 text-gray-100 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-950 text-gray-100 font-sans overflow-hidden">
       <Head>
-        <title>Dashboard de Tarefas</title>
-        <meta name="description" content="Painel de controle de tarefas" />
+        <title>Nexus Task | Dashboard</title>
+        <meta name="description" content="Painel de controle de tarefas premium" />
       </Head>
 
-      {/* Notificações */}
-      <div className="fixed top-4 right-4 space-y-3 z-50">
-        {/* Mensagem de erro */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-red-600 text-white px-6 py-4 rounded-lg shadow-xl flex items-center"
-              role="alert"
-              aria-live="assertive"
-            >
-              <span>{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="ml-4 font-bold hover:text-gray-300 focus:outline-none"
-                aria-label="Fechar mensagem de erro"
-              >
-                ×
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Mensagem de sucesso */}
-        <AnimatePresence>
-          {successMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-xl flex items-center"
-              role="status"
-              aria-live="polite"
-            >
-              <span>{successMessage}</span>
-              <button
-                onClick={() => setSuccessMessage(null)}
-                className="ml-4 font-bold hover:text-gray-300 focus:outline-none"
-                aria-label="Fechar mensagem de sucesso"
-              >
-                ×
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Efeito de partículas de fundo */}
+      <div className="fixed inset-0 overflow-hidden opacity-20">
+        {[...Array(20)].map((_, i) => (
+          <motion.div
+            key={i}
+            initial={{ 
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              opacity: 0
+            }}
+            animate={{ 
+              y: [null, (Math.random() - 0.5) * 100],
+              opacity: [0, 0.8, 0],
+              transition: { 
+                duration: 10 + Math.random() * 20,
+                repeat: Infinity,
+                repeatType: "reverse"
+              }
+            }}
+            className="absolute w-1 h-1 bg-blue-400 rounded-full"
+          />
+        ))}
       </div>
 
-      {/* Cabeçalho */}
-      <header className="bg-white/5 backdrop-blur-md shadow-xl rounded-2xl p-6 mb-8 border border-gray-700">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
-              Dashboard
-            </h1>
-            <p className="text-gray-300 mt-2 text-lg">
-              {session.user?.name || "Bem-vindo(a)"}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-400 text-sm">
-              {tasks.length} {tasks.length === 1 ? "tarefa" : "tarefas"}
-            </span>
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl shadow-md hover:brightness-110 hover:scale-105 transition-all duration-300 active:scale-95 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-400"
-              aria-label="Sair da conta"
-            >
-              Sair
-            </button>
-          </div>
+      {/* Cabeçalho com efeito de vidro */}
+      <motion.header
+        onHoverStart={() => setIsHoveringHeader(true)}
+        onHoverEnd={() => setIsHoveringHeader(false)}
+        className="fixed top-0 left-0 right-0 bg-gray-800/30 backdrop-blur-lg shadow-2xl z-40 border-b border-gray-700/50"
+      >
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <motion.div
+            animate={{
+              backgroundPosition: isHoveringHeader ? '100% 50%' : '0% 50%'
+            }}
+            transition={{ duration: 2 }}
+            className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent bg-[length:200%_100%]"
+          >
+            <h1 className="text-3xl font-bold">Nexus Task</h1>
+            <p className="text-sm font-light">{session.user?.name || "Bem-vindo"}</p>
+          </motion.div>
+          
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl shadow-lg hover:shadow-red-500/30 transition-all"
+          >
+            <FiLogOut />
+            <span>Sair</span>
+          </motion.button>
         </div>
-      </header>
+      </motion.header>
 
       {/* Conteúdo principal */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Criar tarefa */}
-        <section 
-          className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700"
-          aria-labelledby="create-task-heading"
+      <main className="pt-28 pb-10 px-6 max-w-7xl mx-auto relative z-10">
+        {/* Seção de criação de tarefa */}
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-gray-800/50 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden border border-gray-700/50 mb-8"
         >
-          <h2 id="create-task-heading" className="text-2xl font-bold text-white mb-4">
-            Criar Nova Tarefa
-          </h2>
-          <CreateTaskForm 
-            onTaskCreated={() => {
-              fetchTasks();
-              showSuccessMessage("Tarefa criada com sucesso!");
-            }} 
-          />
-        </section>
-
-        {/* Listar tarefas */}
-        <section 
-          className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-gray-700"
-          aria-labelledby="tasks-list-heading"
-        >
-          <div className="flex justify-between items-center mb-4">
-            <h2 id="tasks-list-heading" className="text-2xl font-bold text-white">
-              Suas Tarefas
-            </h2>
-            <button
-              onClick={fetchTasks}
-              disabled={loading}
-              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-              aria-label="Recarregar tarefas"
-            >
-              Atualizar
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-blue-500 border-opacity-70"></div>
+          <div className="p-1 bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-pink-500/30">
+            <div className="bg-gray-800/80 p-6">
+              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                <FiPlus className="text-blue-400" />
+                <span>Criar Nova Tarefa</span>
+              </h2>
+              <CreateTaskForm 
+                onTaskCreated={createTask}
+              />
             </div>
-          ) : tasks.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">Nenhuma tarefa cadastrada.</p>
-          ) : (
-            <ul className="space-y-4 max-h-[480px] overflow-y-auto pr-2">
-              {tasks.map((task) => (
-                <motion.li
-                  key={task.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="bg-gray-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={task.completed}
-                      onChange={() => toggleTaskCompletion(task.id, task.completed)}
-                      aria-label={`Marcar tarefa "${task.title}" como ${
-                        task.completed ? "não concluída" : "concluída"
-                      }`}
-                      className="flex-shrink-0 w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                    <div className="min-w-0">
-                      <h3
-                        className={`text-lg font-semibold truncate ${
-                          task.completed ? "line-through text-gray-500" : "text-white"
-                        }`}
-                        title={task.title}
-                      >
-                        {task.title}
-                      </h3>
-                      <p
-                        className={`mt-1 text-sm whitespace-pre-wrap break-words ${
-                          task.completed ? "line-through text-gray-400" : "text-gray-300"
-                        }`}
-                      >
-                        {task.description}
-                      </p>
-                    </div>
-                  </div>
+          </div>
+        </motion.section>
 
-                  {/* Botões de ação */}
-                  <div className="flex gap-3 mt-3 md:mt-0">
-                    <button
-                      onClick={() => setEditingTask(task)}
-                      aria-label={`Editar tarefa ${task.title}`}
-                      className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg px-3 py-1 text-white font-semibold transition-colors"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => deleteTask(task.id)}
-                      aria-label={`Excluir tarefa ${task.title}`}
-                      className="bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg px-3 py-1 text-white font-semibold transition-colors"
-                    >
-                      Excluir
-                    </button>
+        {/* Lista de tarefas com skeleton loading */}
+        <LayoutGroup>
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-gray-800/50 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden border border-gray-700/50"
+          >
+            <div className="p-1 bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-pink-500/30">
+              <div className="bg-gray-800/80 p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <FiCheck className="text-purple-400" />
+                    <span>Suas Tarefas</span>
+                    {!loading && (
+                      <span className="text-sm font-normal bg-gray-700/50 px-2 py-1 rounded-full ml-2">
+                        {tasks.length}
+                      </span>
+                    )}
+                  </h2>
+                  <motion.button
+                    onClick={fetchTasks}
+                    disabled={loading}
+                    whileHover={{ rotate: 180 }}
+                    whileTap={{ scale: 0.9 }}
+                    className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors disabled:opacity-50"
+                    aria-label="Recarregar tarefas"
+                  >
+                    <FiRefreshCw className={`${loading ? 'animate-spin' : ''}`} />
+                  </motion.button>
+                </div>
+
+                {loading && tasks.length === 0 ? (
+                  <div className="space-y-3">
+                    {renderTaskSkeletons()}
                   </div>
-                </motion.li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+                ) : tasks.length === 0 ? (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-center py-12"
+                  >
+                    <p className="text-gray-400 text-lg">Nenhuma tarefa encontrada</p>
+                    <p className="text-gray-500 text-sm mt-2">Crie sua primeira tarefa acima</p>
+                  </motion.div>
+                ) : (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    {/* Tarefas não concluídas primeiro */}
+                    {pendingTasks.map((task) => (
+                      <TaskItem 
+                        key={task.id}
+                        task={task}
+                        onToggle={toggleTaskCompletion}
+                        onEdit={setEditingTask}
+                        onDelete={deleteTask}
+                      />
+                    ))}
+
+                    {/* Separador visual */}
+                    {pendingTasks.length > 0 && completedTasks.length > 0 && (
+                      <div className="border-t border-gray-700/50 my-3"></div>
+                    )}
+
+                    {/* Tarefas concluídas */}
+                    {completedTasks.map((task) => (
+                      <TaskItem 
+                        key={task.id}
+                        task={task}
+                        onToggle={toggleTaskCompletion}
+                        onEdit={setEditingTask}
+                        onDelete={deleteTask}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.section>
+        </LayoutGroup>
+      </main>
 
       {/* Modal de edição */}
       <AnimatePresence>
         {editingTask && (
           <motion.div
-            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="edit-task-title"
           >
             <motion.div
               ref={modalRef}
-              className="bg-gray-900 rounded-3xl p-8 max-w-xl w-full shadow-lg border border-gray-700"
-              initial={{ scale: 0.7, opacity: 0 }}
+              className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl shadow-2xl border border-gray-700/50 w-full max-w-xl"
+              initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.7, opacity: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
             >
-              <h3 id="edit-task-title" className="text-2xl font-bold text-white mb-6">
-                Editar Tarefa
-              </h3>
-              <TaskForm
-                task={editingTask}
-                onTaskSaved={() => {
-                  setEditingTask(null);
-                  fetchTasks();
-                  showSuccessMessage("Tarefa atualizada com sucesso!");
-                }}
-              />
-              <button
-                onClick={() => setEditingTask(null)}
-                aria-label="Fechar modal de edição"
-                className="mt-6 w-full bg-gray-700 hover:bg-gray-600 text-white rounded-xl py-2 font-semibold focus:outline-none focus-visible:ring-4 focus-visible:ring-gray-500"
-              >
-                Cancelar
-              </button>
+              <div className="p-1 bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 rounded-t-3xl">
+                <div className="bg-gray-800/90 p-8 rounded-t-3xl">
+                  <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                    <FiEdit2 className="text-purple-400" />
+                    <span>Editar Tarefa</span>
+                  </h3>
+                  <TaskForm
+                    task={editingTask}
+                    onTaskSaved={() => {
+                      setEditingTask(null);
+                      fetchTasks();
+                      showNotification("Tarefa atualizada com sucesso!", 'success');
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-gray-800/50 border-t border-gray-700/50 rounded-b-3xl flex justify-end">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setEditingTask(null)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
+                >
+                  Cancelar
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Notificações */}
+      <div className="fixed top-4 right-4 z-50 space-y-3">
+        <AnimatePresence>
+          {notifications.map((notification) => (
+            <motion.div
+              key={notification.id}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              className={`${
+                notification.type === 'success' 
+                  ? 'bg-green-600/90 border-green-400/30' 
+                  : 'bg-red-600/90 border-red-400/30'
+              } backdrop-blur-md text-white px-6 py-4 rounded-xl shadow-xl flex items-center gap-3 border`}
+              role={notification.type === 'success' ? 'status' : 'alert'}
+            >
+              <div className="flex-1">{notification.message}</div>
+              <button
+                onClick={() => setNotifications((prev) => prev.filter((n) => n.id !== notification.id))}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                ×
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* Efeito de iluminação */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-500/10 rounded-full filter blur-3xl"></div>
+        <div className="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-purple-500/10 rounded-full filter blur-3xl"></div>
+      </div>
     </div>
   );
 };
+
+// Componente memoizado para itens de tarefa
+const TaskItem = React.memo(({ 
+  task, 
+  onToggle, 
+  onEdit, 
+  onDelete 
+}: {
+  task: Task;
+  onToggle: (id: string, completed: boolean) => void;
+  onEdit: (task: Task) => void;
+  onDelete: (id: string) => void;
+}) => (
+  <motion.div
+    layout
+    initial={{ opacity: 0, scale: 0.9 }}
+    animate={{ opacity: 1, scale: 1 }}
+    exit={{ opacity: 0, x: -50 }}
+    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+    className={`rounded-xl overflow-hidden ${task.completed ? 'opacity-70' : ''}`}
+  >
+    <div className="bg-gradient-to-r from-gray-700/50 to-gray-800/50 p-1 rounded-xl">
+      <div className="bg-gray-800/90 p-4 flex flex-col md:flex-row md:items-center gap-4 rounded-xl">
+        {/* Checkbox interativo */}
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => onToggle(task.id, task.completed)}
+          className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+            task.completed 
+              ? 'border-green-400 bg-green-400/10' 
+              : 'border-gray-500 hover:border-blue-400'
+          } transition-colors`}
+          aria-label={`Marcar tarefa como ${task.completed ? 'não concluída' : 'concluída'}`}
+        >
+          {task.completed && (
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="text-green-400"
+            >
+              <FiCheck />
+            </motion.span>
+          )}
+        </motion.button>
+
+        {/* Conteúdo da tarefa */}
+        <div className="flex-1 min-w-0">
+          <h3
+            className={`text-lg font-medium truncate ${
+              task.completed ? 'line-through text-gray-400' : 'text-white'
+            }`}
+            title={task.title}
+          >
+            {task.title}
+          </h3>
+          {task.description && (
+            <p
+              className={`text-sm mt-1 whitespace-pre-wrap break-words ${
+                task.completed ? 'line-through text-gray-500' : 'text-gray-300'
+              }`}
+            >
+              {task.description}
+            </p>
+          )}
+        </div>
+
+        {/* Ações */}
+        <div className="flex gap-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onEdit(task)}
+            className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg text-blue-400 transition-colors"
+            aria-label="Editar tarefa"
+          >
+            <FiEdit2 />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onDelete(task.id)}
+            className="p-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-red-400 transition-colors"
+            aria-label="Excluir tarefa"
+          >
+            <FiTrash2 />
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+));
+
+TaskItem.displayName = 'TaskItem';
 
 export default ClientDashboard;
