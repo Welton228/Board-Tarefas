@@ -31,11 +31,7 @@ export default function RootLayout({ children, session }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <SessionProvider 
-          session={session} 
-          refetchInterval={5 * 60} // Mantido o mesmo intervalo
-          refetchOnWindowFocus={true} // Adicionado para melhor gerenciamento de sessão
-        >
+        <SessionProvider session={session}>
           {/* Header mantido exatamente como estava */}
           <Header />
           

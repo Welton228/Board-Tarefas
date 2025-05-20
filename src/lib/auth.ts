@@ -1,50 +1,16 @@
 // lib/auth.ts
-
-import { type NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
 import { getToken as nextAuthGetToken } from "next-auth/jwt";
+import type { NextAuthOptions, Session, User } from "next-auth";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { prisma } from "./prisma";
 import type { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
 
-/**
- * Função para renovar o token de acesso do Google usando o refresh token.
- */
-const refreshAccessToken = async (token: any) => {
-  try {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: token.refreshToken,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) throw data;
-
-    return {
-      ...token,
-      accessToken: data.access_token,
-      accessTokenExpires: Date.now() + data.expires_in * 1000,
-      refreshToken: data.refresh_token ?? token.refreshToken,
-      error: undefined,
-    };
-  } catch (error) {
-    console.error("[REFRESH TOKEN ERROR]", error);
-    return { ...token, error: "RefreshAccessTokenError" };
-  }
-};
-
-/**
- * Configurações do NextAuth.
- */
+// Configurações principais do NextAuth
 export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -53,123 +19,106 @@ export const authOptions: NextAuthOptions = {
         params: {
           prompt: "consent",
           access_type: "offline",
-          response_type: "code",
-          scope:
-            "openid email profile https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email",
-        },
-      },
-    }),
-  ],
-
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
-    updateAge: 24 * 60 * 60,
-  },
-
-  callbacks: {
-    async jwt({ token, account, user, trigger, session }) {
-      if (trigger === "update" && session?.user) {
-        return {
-          ...token,
-          name: session.user.name,
-          email: session.user.email,
-          picture: session.user.image,
-        };
+          response_type: "code"
+        }
       }
+    }),
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Email e senha são obrigatórios");
+        }
 
-      // Primeira vez que o usuário loga
-      if (account && user) {
-        // Verifica se o usuário já existe no banco
-        const dbUser = await prisma.user.upsert({
-          where: { email: user.email! },
-          update: {},
-          create: {
-            email: user.email!,
-            name: user.name!,
-          },
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
         });
 
-        return {
-          ...token,
-          id: dbUser.id, // ← Aqui está o UUID correto
-          accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          accessTokenExpires: account.expires_at
-            ? account.expires_at * 1000
-            : Date.now() + 3600 * 1000,
-          error: undefined,
-        };
+        if (!user || !user.password) {
+          throw new Error("Usuário não encontrado");
+        }
+
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
+
+        if (!isPasswordValid) {
+          throw new Error("Senha inválida");
+        }
+
+        return user;
+      }
+    })
+  ],
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 dias
+    updateAge: 24 * 60 * 60 // 24 horas
+  },
+  callbacks: {
+    async jwt({ token, user, account }) {
+      // Persiste os dados do usuário no token
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
       }
 
-      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
-        return token;
+      // Atualiza o token de acesso do provedor OAuth
+      if (account?.access_token) {
+        token.accessToken = account.access_token;
       }
 
-      return await refreshAccessToken(token);
+      return token;
     },
-
     async session({ session, token }) {
+      // Adiciona os dados do token à sessão
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.email = token.email as string;
         session.accessToken = token.accessToken as string;
-        session.error = token.error;
       }
       return session;
-    },
+    }
   },
-
+  pages: {
+    signIn: "/login",
+    error: "/auth/error"
+  },
+  debug: process.env.NODE_ENV === "development",
+  secret: process.env.NEXTAUTH_SECRET,
   cookies: {
     sessionToken: {
-      name: `${
-        process.env.NODE_ENV === "production" ? "__Secure-" : ""
-      }next-auth.session-token`,
+      name: `next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 30 * 24 * 60 * 60,
-      },
-    },
-  },
-
-  pages: {
-    signIn: "/login",
-    error: "/auth/error",
-  },
-
-  secret: process.env.NEXTAUTH_SECRET!,
-  debug: process.env.NEXTAUTH_DEBUG === "true",
+        secure: process.env.NODE_ENV === "production"
+      }
+    }
+  }
 };
 
 /**
- * Tipagem do token com os campos personalizados.
+ * Helper para obter o token JWT
+ * @param req NextRequest - objeto da requisição
+ * @returns Promise<JWT | null> - token decodificado ou null
  */
-interface DecodedToken {
-  id?: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-  accessToken?: string;
-  accessTokenExpires?: number;
-  refreshToken?: string;
-  error?: string;
-  [key: string]: any;
-}
-
-/**
- * Função auxiliar para obter o token no App Router via NextRequest.
- */
-export const getToken = async (
-  req: NextRequest
-): Promise<DecodedToken | null> => {
-  const token = await nextAuthGetToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET!,
-    secureCookie: process.env.NODE_ENV === "production",
-    raw: false,
-  });
-
-  return token as DecodedToken | null;
+export const getToken = async (req: NextRequest): Promise<any | null> => {
+  try {
+    return await nextAuthGetToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET!,
+      secureCookie: process.env.NODE_ENV === "production",
+      raw: false
+    });
+  } catch (error) {
+    console.error("Erro ao obter token:", error);
+    return null;
+  }
 };

@@ -4,7 +4,7 @@ import { NextAuthOptions } from "next-auth";
 
 /**
  * Configuração completa do NextAuth com:
- * - Provider Google
+ * - Provedor Google
  * - Callbacks para session e jwt
  * - Tratamento de tokens
  * - Renovação automática de token
@@ -18,10 +18,10 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
       authorization: {
         params: {
-          prompt: "consent",
-          access_type: "offline",
-          response_type: "code",
-          scope: "openid email profile"
+          prompt: "consent", // Solicita o consentimento do usuário para acessar seus dados
+          access_type: "offline", // Permite o refresh token
+          response_type: "code", // Fluxo de autorização
+          scope: "openid email profile" // Escopos necessários
         }
       }
     })
@@ -30,7 +30,7 @@ export const authOptions: NextAuthOptions = {
   // Chave secreta única para toda a aplicação
   secret: process.env.NEXTAUTH_SECRET,
 
-  // Configuração de sessão
+  // Configuração de sessão (utilizando JWT)
   session: {
     strategy: "jwt", // Usa JWT ao invés de sessão de banco de dados
     maxAge: 30 * 24 * 60 * 60, // 30 dias de duração
@@ -42,10 +42,10 @@ export const authOptions: NextAuthOptions = {
     sessionToken: {
       name: `${process.env.NODE_ENV === 'production' ? '__Secure-' : ''}next-auth.session-token`,
       options: {
-        httpOnly: true,
-        sameSite: 'lax',
+        httpOnly: true, // Impede acesso via JavaScript
+        sameSite: 'lax', // Configuração de segurança de cookies
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production', // Só segura em produção
         maxAge: 30 * 24 * 60 * 60 // 30 dias
       }
     }
@@ -53,10 +53,14 @@ export const authOptions: NextAuthOptions = {
 
   // Callbacks para manipulação de tokens e sessões
   callbacks: {
+    /**
+     * Manipula o JWT no momento da autenticação.
+     * - Se o login for o primeiro, ele adiciona o accessToken e refreshToken.
+     * - Se o token estiver expirado, tenta renová-lo com o refreshToken.
+     */
     async jwt({ token, user, account, trigger, session }) {
-      // Atualização do token quando solicitado
       if (trigger === 'update') {
-        return { ...token, ...session.user };
+        return { ...token, ...session.user }; // Atualiza token com dados do usuário
       }
 
       // Primeiro login - adiciona tokens do provedor
@@ -82,12 +86,15 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // Token expirado - tentar renovar
+      // Token expirado - tenta renovar
       return await refreshAccessToken(token);
     },
 
+    /**
+     * Atualiza a sessão com as informações do token JWT.
+     * - Inclui dados do usuário e o accessToken na sessão.
+     */
     async session({ session, token }) {
-      // Passa todos os dados necessários para a sessão
       session.user = {
         ...session.user,
         id: token.user?.id || token.sub || '',
@@ -103,18 +110,21 @@ export const authOptions: NextAuthOptions = {
     }
   },
 
-  // Páginas customizadas
+  // Páginas customizadas para login e erro
   pages: {
-    signIn: "/login",
-    error: "/auth/error",
-    signOut: "/logout"
+    signIn: "/login", // Página de login
+    error: "/auth/error", // Página de erro
+    signOut: "/logout" // Página de logout
   },
 
-  // Debug em desenvolvimento
+  // Debug em desenvolvimento para facilitar a depuração
   debug: process.env.NODE_ENV === "development"
 };
 
-// Função para renovar o token de acesso
+/**
+ * Função para renovar o token de acesso quando ele expira.
+ * - Utiliza o refresh token para obter um novo access token do Google.
+ */
 async function refreshAccessToken(token: any) {
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -148,7 +158,7 @@ async function refreshAccessToken(token: any) {
   }
 }
 
-// Exporta os handlers para rotas de API
+// Exporta os handlers para as rotas de API
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
 export default NextAuth(authOptions);

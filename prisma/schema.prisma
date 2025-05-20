@@ -1,17 +1,35 @@
-model Task {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String?
-  completed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
+// Gerador do Prisma Client para comunicação com o banco de dados
+generator client {
+  provider = "prisma-client-js"
+  output   = "./node_modules/@prisma/client"
 }
 
+// Configuração da fonte de dados: PostgreSQL
+datasource db {
+  provider = "postgresql" // Define que o banco utilizado é PostgreSQL
+  url      = env("DATABASE_URL") // URL do banco, definida no arquivo .env
+}
+
+// Modelo do Usuário
 model User {
-  id            String    @id @default(uuid())
-  // ... outros campos do usuário
-  tasks         Task[]
+  id        String   @id @default(cuid())         // ID único do usuário (gerado automaticamente com cuid())
+  email     String   @unique                      // E-mail do usuário (deve ser único no banco)
+  password  String                                 // Senha do usuário
+  name      String?                                // Nome do usuário (opcional, usado no cadastro via Google)
+  createdAt DateTime @default(now())              // Data de criação do registro (com valor padrão atual)
+  updatedAt DateTime @updatedAt                   // Data da última atualização automática do registro
+  tasks     Task[]                                // Relação: um usuário pode ter várias tarefas (1:N)
+}
+
+// Modelo de Tarefa
+model Task {
+  id          Int      @id @default(autoincrement())               // ID único da tarefa (autoincrementado)
+  title       String                                               // Título da tarefa (obrigatório)
+  description String?                                              // Descrição da tarefa (opcional)
+  completed   Boolean  @default(false)                             // Indica se a tarefa está concluída
+  createdAt   DateTime @default(now())                             // Data de criação da tarefa
+  userId      String                                               // Chave estrangeira para o usuário
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) 
+                                                                   // Relacionamento com usuário. Se o usuário for deletado, as tarefas também são.
+  @@index([userId])                                                // Índice para consultas eficientes por `userId`
 }

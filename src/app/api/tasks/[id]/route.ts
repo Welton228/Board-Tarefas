@@ -15,20 +15,27 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   try {
     // Verifica se a conversão foi bem-sucedida
     if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+      return NextResponse.json({ error: 'ID inválido. O ID da tarefa deve ser um número.' }, { status: 400 });
     }
 
     // Verifica o token de autenticação do usuário
     const token = await getToken(req);
-
-    // Caso o token não seja válido ou o id do token não seja uma string, retorna erro 401
     if (!token?.id || typeof token.id !== 'string') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+      return NextResponse.json({ error: 'Não autorizado. Token inválido ou ausente.' }, { status: 401 });
     }
 
     // Obtém os dados enviados no corpo da requisição (JSON)
     const body = await req.json();
     const { title, description, completed } = body;
+
+    // Valida os dados recebidos
+    if (title && typeof title !== 'string') {
+      return NextResponse.json({ error: 'Título inválido. O título deve ser uma string.' }, { status: 400 });
+    }
+
+    if (description && typeof description !== 'string') {
+      return NextResponse.json({ error: 'Descrição inválida. A descrição deve ser uma string.' }, { status: 400 });
+    }
 
     // Verifica se a tarefa com o 'id' existe no banco de dados
     const existingTask = await prisma.task.findUnique({
@@ -37,10 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     // Se a tarefa não existir ou não pertencer ao usuário, retorna erro 403
     if (!existingTask || existingTask.userId !== token.id) {
-      return NextResponse.json(
-        { error: 'Tarefa não encontrada ou não pertence ao usuário.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Tarefa não encontrada ou não pertence ao usuário.' }, { status: 403 });
     }
 
     // Atualiza a tarefa com os novos dados, se fornecidos
@@ -48,7 +52,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       where: { id: taskId },
       data: {
         ...(title && { title: title.trim() }), // Atualiza o título se fornecido
-        ...(description !== undefined && { description: description?.trim() || null }), // Atualiza a descrição, ou define como null se vazio
+        ...(description !== undefined && { description: description.trim() || null }), // Atualiza a descrição, ou define como null se vazio
         ...(typeof completed === 'boolean' && { completed }), // Atualiza o status de completado se fornecido
       },
     });
@@ -58,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   } catch (error: any) {
     // Em caso de erro, loga o erro e retorna uma mensagem de erro genérica
     console.error('[PUT TASK ERROR]', error);
-    return NextResponse.json({ error: 'Erro ao atualizar tarefa' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao atualizar tarefa. Por favor, tente novamente.' }, { status: 500 });
   }
 }
 
@@ -75,15 +79,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   try {
     // Verifica se a conversão foi bem-sucedida
     if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+      return NextResponse.json({ error: 'ID inválido. O ID da tarefa deve ser um número.' }, { status: 400 });
     }
 
     // Verifica o token de autenticação do usuário
     const token = await getToken(req);
-
-    // Caso o token não seja válido ou o id do token não seja uma string, retorna erro 401
     if (!token?.id || typeof token.id !== 'string') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+      return NextResponse.json({ error: 'Não autorizado. Token inválido ou ausente.' }, { status: 401 });
     }
 
     // Verifica se a tarefa com o 'id' existe no banco de dados
@@ -93,10 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     // Se a tarefa não existir ou não pertencer ao usuário, retorna erro 403
     if (!task || task.userId !== token.id) {
-      return NextResponse.json(
-        { error: 'Tarefa não encontrada ou não pertence ao usuário.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Tarefa não encontrada ou não pertence ao usuário.' }, { status: 403 });
     }
 
     // Exclui a tarefa do banco de dados
@@ -105,10 +104,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     });
 
     // Retorna uma mensagem confirmando a exclusão
-    return NextResponse.json({ message: 'Tarefa excluída com sucesso' });
+    return NextResponse.json({ message: 'Tarefa excluída com sucesso.' });
   } catch (error: any) {
     // Em caso de erro, loga o erro e retorna uma mensagem de erro genérica
     console.error('[DELETE TASK ERROR]', error);
-    return NextResponse.json({ error: 'Erro ao excluir tarefa' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao excluir tarefa. Por favor, tente novamente.' }, { status: 500 });
   }
 }

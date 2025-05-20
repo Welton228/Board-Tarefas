@@ -1,88 +1,111 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getToken } from '@/lib/auth';
-import type { NextRequest } from 'next/server';
+// src/app/api/tasks/route.ts
 
-/**
- * GET /api/tasks
- * Lista todas as tarefas do usuário autenticado.
- */
-export async function GET(req: NextRequest) {
-  try {
-    const token = await getToken(req);
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../lib/auth';
 
-    if (!token?.id || typeof token.id !== 'string') {
-      return NextResponse.json(
-        { error: 'Sessão expirada ou inválida. Faça login novamente.' },
-        { status: 401 }
-      );
-    }
+// Inicializa o PrismaClient como uma instância global para evitar múltiplas instâncias
+const prisma = new PrismaClient();
 
-    const tasks = await prisma.task.findMany({
-      where: { userId: token.id },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return NextResponse.json(tasks);
-  } catch (error: any) {
-    console.error('[GET TASKS ERROR]', error);
-
-    return NextResponse.json(
-      {
-        error: 'Erro ao buscar tarefas.',
-        ...(process.env.NODE_ENV === 'development' && { details: error.message }),
-      },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * POST /api/tasks
- * Cria uma nova tarefa para o usuário autenticado.
- */
+// =========================
+// POST - Criar nova tarefa
+// =========================
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken(req);
+    // Verifica a sessão do usuário com as opções de autenticação
+    const session = await getServerSession(authOptions);
 
-    if (!token?.id || typeof token.id !== 'string') {
+    // Se não houver sessão ou ID de usuário, retorna não autorizado
+    if (!session?.user?.id) {
       return NextResponse.json(
-        { error: 'Sessão expirada ou inválida. Faça login novamente.' },
+        { error: 'Acesso não autorizado. Por favor, faça login.' },
         { status: 401 }
       );
     }
 
-    const body = await req.json();
-    const { title, description }: { title: string; description?: string } = body;
+    const userId = session.user.id;
 
-    // Validação do campo 'title'
-    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+    // Verifica se o usuário existe no banco de dados
+    const user = await prisma.user.findUnique({ 
+      where: { id: userId } 
+    });
+
+    if (!user) {
       return NextResponse.json(
-        { error: 'Título da tarefa é obrigatório e deve ser uma string válida.' },
+        { error: 'Usuário não encontrado.' }, 
+        { status: 404 }
+      );
+    }
+
+    // Extrai e valida os dados da requisição
+    const { title, description } = await req.json();
+
+    if (!title?.trim() || !description?.trim()) {
+      return NextResponse.json(
+        { error: 'Título e descrição são obrigatórios' },
         { status: 400 }
       );
     }
 
-    // Criação da nova tarefa
-    const newTask = await prisma.task.create({
+    // Cria a nova tarefa no banco de dados
+    const task = await prisma.task.create({
       data: {
         title: title.trim(),
-        description: description?.trim() || null,
+        description: description.trim(),
         completed: false,
-        userId: token.id,
+        userId,
       },
     });
 
-    return NextResponse.json(newTask, { status: 201 });
-  } catch (error: any) {
-    console.error('[POST TASK ERROR]', error);
-  
+    return NextResponse.json(task, { status: 201 });
+  } catch (error) {
+    console.error('Erro ao criar tarefa:', error);
     return NextResponse.json(
-      {
-        error: 'Erro ao criar tarefa',
-        ...(process.env.NODE_ENV === 'development' && { details: error.message }),
-      },
+      { error: 'Ocorreu um erro ao processar sua solicitação' },
       { status: 500 }
     );
+  } finally {
+    // Fecha a conexão com o Prisma
+    await prisma.$disconnect();
+  }
+}
+
+// =========================
+// GET - Buscar tarefas do usuário
+// =========================
+export async function GET(req: NextRequest) {
+  try {
+    // Verifica a sessão do usuário
+    const session = await getServerSession(authOptions);
+
+    // Se não houver sessão válida, retorna não autorizado
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Acesso não autorizado. Por favor, faça login.' },
+        { status: 401 }
+      );
+    }
+
+    // Busca as tarefas do usuário ordenadas por data de criação
+    const tasks = await prisma.task.findMany({
+      where: { 
+        userId: session.user.id 
+      },
+      orderBy: { 
+        createdAt: 'desc' 
+      },
+    });
+
+    return NextResponse.json(tasks, { status: 200 });
+  } catch (error) {
+    console.error('Erro ao buscar tarefas:', error);
+    return NextResponse.json(
+      { error: 'Ocorreu um erro ao buscar suas tarefas' },
+      { status: 500 }
+    );
+  } finally {
+    // Fecha a conexão com o Prisma
+    await prisma.$disconnect();
   }
 }
