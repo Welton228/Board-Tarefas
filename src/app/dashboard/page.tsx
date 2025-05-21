@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Head from "next/head";
@@ -31,18 +31,113 @@ interface Notification {
 }
 
 /**
- * Componente principal do Dashboard
+ * Componente de item de tarefa memoizado para performance
  */
-const ClientDashboard = () => {
+const TaskItem = React.memo(({ 
+  task, 
+  onToggle, 
+  onEdit, 
+  onDelete 
+}: {
+  task: Task;
+  onToggle: (id: string, completed: boolean) => void;
+  onEdit: (task: Task) => void;
+  onDelete: (id: string) => void;
+}) => (
+  <motion.div
+    layout
+    initial={{ opacity: 0, scale: 0.9 }}
+    animate={{ opacity: 1, scale: 1 }}
+    exit={{ opacity: 0, x: -50 }}
+    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+    className={`rounded-xl overflow-hidden ${task.completed ? 'opacity-70' : ''}`}
+  >
+    <div className="bg-gradient-to-r from-gray-700/50 to-gray-800/50 p-1 rounded-xl">
+      <div className="bg-gray-800/90 p-4 flex flex-col md:flex-row md:items-center gap-4 rounded-xl">
+        {/* Checkbox interativo */}
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => onToggle(task.id, task.completed)}
+          className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+            task.completed 
+              ? 'border-green-400 bg-green-400/10' 
+              : 'border-gray-500 hover:border-blue-400'
+          } transition-colors`}
+          aria-label={`Marcar tarefa como ${task.completed ? 'não concluída' : 'concluída'}`}
+        >
+          {task.completed && (
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="text-green-400"
+            >
+              <FiCheck />
+            </motion.span>
+          )}
+        </motion.button>
+
+        {/* Conteúdo da tarefa */}
+        <div className="flex-1 min-w-0">
+          <h3
+            className={`text-lg font-medium truncate ${
+              task.completed ? 'line-through text-gray-400' : 'text-white'
+            }`}
+            title={task.title}
+          >
+            {task.title}
+          </h3>
+          {task.description && (
+            <p
+              className={`text-sm mt-1 whitespace-pre-wrap break-words ${
+                task.completed ? 'line-through text-gray-500' : 'text-gray-300'
+              }`}
+            >
+              {task.description}
+            </p>
+          )}
+        </div>
+
+        {/* Ações */}
+        <div className="flex gap-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onEdit(task)}
+            className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg text-blue-400 transition-colors"
+            aria-label="Editar tarefa"
+          >
+            <FiEdit2 />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onDelete(task.id)}
+            className="p-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-red-400 transition-colors"
+            aria-label="Excluir tarefa"
+          >
+            <FiTrash2 />
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+));
+
+TaskItem.displayName = 'TaskItem';
+
+/**
+ * Componente principal do Dashboard (agora envolvido por Suspense)
+ */
+const DashboardContent = () => {
   // Dados de autenticação e roteamento
   const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // Agora seguro dentro de Suspense
   
   // Estados otimizados
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [loading, setLoading] = useState(false); // Inicia como false para skeleton loading
+  const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isHoveringHeader, setIsHoveringHeader] = useState(false);
 
@@ -76,26 +171,20 @@ const ClientDashboard = () => {
   }, []);
 
   /**
-   * Busca tarefas com otimizações:
-   * - Cache controlado
-   * - AbortController para cancelar requisições pendentes
-   * - Pré-carregamento
+   * Busca tarefas com otimizações
    */
   const fetchTasks = useCallback(async () => {
-    // Cancela requisição anterior se existir
     if (controllerRef.current) {
       controllerRef.current.abort();
     }
     
     const now = Date.now();
-    // Se a última requisição foi há menos de 2 segundos, ignora
     if (now - lastFetchRef.current < 2000) return;
     
     lastFetchRef.current = now;
     setLoading(true);
     
     try {
-      // Cria novo controller para a requisição
       controllerRef.current = new AbortController();
       
       const response = await fetch(`/api/tasks?ts=${now}`, {
@@ -143,7 +232,6 @@ const ClientDashboard = () => {
       userId: session?.user?.id || ''
     };
 
-    // Atualização otimista
     setTasks(prev => [optimisticTask, ...prev]);
 
     try {
@@ -164,7 +252,6 @@ const ClientDashboard = () => {
 
       const newTask = await response.json();
       
-      // Substitui a tarefa temporária pela real
       setTasks(prev => prev.map(t => 
         t.id === optimisticTask.id ? newTask : t
       ));
@@ -172,7 +259,6 @@ const ClientDashboard = () => {
       showNotification("Tarefa criada com sucesso!", 'success');
       return newTask;
     } catch (error: any) {
-      // Reverte em caso de erro
       setTasks(prev => prev.filter(t => t.id !== optimisticTask.id));
       showNotification(error.message || "Erro ao criar tarefa", 'error');
       throw error;
@@ -183,7 +269,6 @@ const ClientDashboard = () => {
    * Alterna status de conclusão da tarefa (otimizado)
    */
   const toggleTaskCompletion = useCallback(async (id: string, completed: boolean) => {
-    // Otimista UI update
     setTasks(prev => prev.map(task => 
       task.id === id ? { ...task, completed: !completed } : task
     ));
@@ -204,13 +289,11 @@ const ClientDashboard = () => {
         throw new Error("Falha ao atualizar tarefa");
       }
 
-      // Atualiza apenas se necessário (evita re-render desnecessário)
       const updatedTask = await response.json();
       setTasks(prev => prev.map(task => 
         task.id === id ? { ...task, ...updatedTask } : task
       ));
     } catch (error: any) {
-      // Reverte em caso de erro
       setTasks(prev => prev.map(task => 
         task.id === id ? { ...task, completed } : task
       ));
@@ -224,7 +307,6 @@ const ClientDashboard = () => {
   const deleteTask = useCallback(async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta tarefa?")) return;
 
-    // Otimista UI update
     const deletedTask = tasks.find(t => t.id === id);
     setTasks(prev => prev.filter(task => task.id !== id));
 
@@ -244,7 +326,6 @@ const ClientDashboard = () => {
 
       showNotification("Tarefa excluída com sucesso!", 'success');
     } catch (error: any) {
-      // Reverte em caso de erro
       if (deletedTask) {
         setTasks(prev => [...prev, deletedTask].sort((a, b) => 
           new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
@@ -258,7 +339,6 @@ const ClientDashboard = () => {
   useEffect(() => {
     const controller = new AbortController();
     
-    // Pré-carrega assim que a sessão estiver disponível
     if (status === "authenticated") {
       fetchTasks();
     }
@@ -557,97 +637,31 @@ const ClientDashboard = () => {
   );
 };
 
-// Componente memoizado para itens de tarefa
-const TaskItem = React.memo(({ 
-  task, 
-  onToggle, 
-  onEdit, 
-  onDelete 
-}: {
-  task: Task;
-  onToggle: (id: string, completed: boolean) => void;
-  onEdit: (task: Task) => void;
-  onDelete: (id: string) => void;
-}) => (
-  <motion.div
-    layout
-    initial={{ opacity: 0, scale: 0.9 }}
-    animate={{ opacity: 1, scale: 1 }}
-    exit={{ opacity: 0, x: -50 }}
-    transition={{ type: "spring", stiffness: 300, damping: 25 }}
-    className={`rounded-xl overflow-hidden ${task.completed ? 'opacity-70' : ''}`}
-  >
-    <div className="bg-gradient-to-r from-gray-700/50 to-gray-800/50 p-1 rounded-xl">
-      <div className="bg-gray-800/90 p-4 flex flex-col md:flex-row md:items-center gap-4 rounded-xl">
-        {/* Checkbox interativo */}
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => onToggle(task.id, task.completed)}
-          className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
-            task.completed 
-              ? 'border-green-400 bg-green-400/10' 
-              : 'border-gray-500 hover:border-blue-400'
-          } transition-colors`}
-          aria-label={`Marcar tarefa como ${task.completed ? 'não concluída' : 'concluída'}`}
+/**
+ * Componente wrapper principal que adiciona o boundary Suspense
+ */
+const ClientDashboard = () => {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center h-screen gap-4 bg-gradient-to-br from-gray-900 to-gray-950">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="w-16 h-16 border-4 border-t-transparent border-r-blue-500 border-b-purple-600 border-l-pink-500 rounded-full"
+        ></motion.div>
+        <motion.p 
+          initial={{ opacity: 0.5 }}
+          animate={{ opacity: 1 }}
+          transition={{ repeat: Infinity, repeatType: "reverse", duration: 1.5 }}
+          className="text-lg text-gray-300 font-light"
         >
-          {task.completed && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="text-green-400"
-            >
-              <FiCheck />
-            </motion.span>
-          )}
-        </motion.button>
-
-        {/* Conteúdo da tarefa */}
-        <div className="flex-1 min-w-0">
-          <h3
-            className={`text-lg font-medium truncate ${
-              task.completed ? 'line-through text-gray-400' : 'text-white'
-            }`}
-            title={task.title}
-          >
-            {task.title}
-          </h3>
-          {task.description && (
-            <p
-              className={`text-sm mt-1 whitespace-pre-wrap break-words ${
-                task.completed ? 'line-through text-gray-500' : 'text-gray-300'
-              }`}
-            >
-              {task.description}
-            </p>
-          )}
-        </div>
-
-        {/* Ações */}
-        <div className="flex gap-2">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => onEdit(task)}
-            className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg text-blue-400 transition-colors"
-            aria-label="Editar tarefa"
-          >
-            <FiEdit2 />
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => onDelete(task.id)}
-            className="p-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-red-400 transition-colors"
-            aria-label="Excluir tarefa"
-          >
-            <FiTrash2 />
-          </motion.button>
-        </div>
+          Carregando dashboard...
+        </motion.p>
       </div>
-    </div>
-  </motion.div>
-));
-
-TaskItem.displayName = 'TaskItem';
+    }>
+      <DashboardContent />
+    </Suspense>
+  );
+};
 
 export default ClientDashboard;

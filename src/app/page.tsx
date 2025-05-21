@@ -1,11 +1,39 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import heroImg from '../../public/assets/hero.png';
 import { motion, AnimatePresence } from 'framer-motion';
 
+/**
+ * Componente HomePageWrapper para adicionar Suspense boundary
+ * 
+ * Este componente envolve a página Home original para resolver o erro do useSearchParams()
+ * mantendo todas as animações e funcionalidades intactas.
+ */
+const HomePageWrapper = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center">
+        {/* Loader estilizado que combina com o tema da página */}
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+          className="w-16 h-16 border-4 border-t-transparent border-r-blue-400 border-b-blue-500 border-l-blue-300 rounded-full"
+        />
+      </div>
+    }>
+      <Home />
+    </Suspense>
+  );
+};
+
+/**
+ * Componente Home original (com todas as animações e funcionalidades)
+ * 
+ * Mantido exatamente como estava, apenas movido para dentro do Suspense boundary.
+ */
 const Home = () => {
   const searchParams = useSearchParams();
   const [message, setMessage] = useState("");
@@ -154,4 +182,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomePageWrapper;

@@ -4,10 +4,10 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Header from "./header/page";
 import { SessionProvider } from "next-auth/react";
-import { ReactNode } from "react";
+import { ReactNode, Suspense } from "react"; // Adicionado import do Suspense
 import { Session } from "next-auth";
 
-// Fonts (mantidas exatamente como no original)
+// Fontes (mantidas exatamente como no original)
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -24,7 +24,7 @@ const geistMono = localFont({
 
 interface RootLayoutProps {
   children: ReactNode;
-  session?: Session; // Tipagem mais específica usando o tipo Session do NextAuth
+  session?: Session;
 }
 
 export default function RootLayout({ children, session }: RootLayoutProps) {
@@ -35,9 +35,18 @@ export default function RootLayout({ children, session }: RootLayoutProps) {
           {/* Header mantido exatamente como estava */}
           <Header />
           
-          {/* Main mantido com exatamente as mesmas classes */}
+          {/* Main com Suspense boundary envolvendo children */}
           <main className="pt-20 min-h-[calc(100vh-64px)]">
-            {children}
+            <Suspense 
+              fallback={
+                <div className="flex justify-center items-center h-full">
+                  {/* Loader estilizado que combina com seu tema */}
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+              }
+            >
+              {children}
+            </Suspense>
           </main>
         </SessionProvider>
       </body>
