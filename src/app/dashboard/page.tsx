@@ -571,7 +571,7 @@ const DashboardContent = () => {
             >
               <div className="p-1 bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 rounded-t-3xl">
                 <div className="bg-gray-800/90 p-8 rounded-t-3xl">
-                  <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                  <h3 className="text-2xl font-bold text-black mb-6 flex items-center gap-2">
                     <FiEdit2 className="text-purple-400" />
                     <span>Editar Tarefa</span>
                   </h3>
