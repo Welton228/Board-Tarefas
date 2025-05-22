@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "vercel-build.js",
+      "use": "@vercel/static-build"
+    }
+  ],
+  "build": {
+    "env": {
+      "PRISMA_GENERATE": "true"
+    }
+  }
+}
