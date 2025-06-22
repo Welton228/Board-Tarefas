@@ -1,124 +1,106 @@
 // lib/auth.ts
-import { getToken as nextAuthGetToken } from "next-auth/jwt";
-import type { NextAuthOptions, Session, User } from "next-auth";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { prisma } from "./prisma";
-import type { NextRequest } from "next/server";
-import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 
-// Configurações principais do NextAuth
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { NextAuthOptions } from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import prisma from "@/lib/prisma";
+
+/**
+ * ✅ Função segura para validar e carregar variáveis de ambiente
+ */
+const getEnvVars = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const secret = process.env.NEXTAUTH_SECRET;
+
+  // Validações críticas para evitar falhas silenciosas
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "❌ GOOGLE_CLIENT_ID e/ou GOOGLE_CLIENT_SECRET não estão definidos no .env"
+    );
+  }
+
+  if (!secret) {
+    throw new Error("❌ NEXTAUTH_SECRET não está definido no .env");
+  }
+
+  if (secret.length < 32) {
+    console.warn(
+      "⚠️ NEXTAUTH_SECRET deve ter pelo menos 32 caracteres para segurança adequada."
+    );
+  }
+
+  return { clientId, clientSecret, secret };
+};
+
+const env = getEnvVars();
+
+/**
+ * ✅ Configuração centralizada e robusta do NextAuth
+ */
 export const authOptions: NextAuthOptions = {
+  // Usa o Prisma como adaptador para persistência no banco de dados
   adapter: PrismaAdapter(prisma),
+
+  // Configuração dos provedores de autenticação
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: env.clientId,
+      clientSecret: env.clientSecret,
       authorization: {
         params: {
-          prompt: "consent",
-          access_type: "offline",
-          response_type: "code"
-        }
-      }
-    }),
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+          prompt: "consent", // Solicita novo consentimento sempre
+          access_type: "offline", // Permite refresh token
+          response_type: "code",  // Fluxo seguro (PKCE)
+          scope: "openid email profile", // Escopos mínimos recomendados
+        },
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email e senha são obrigatórios");
-        }
-
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email }
-        });
-
-        if (!user || !user.password) {
-          throw new Error("Usuário não encontrado");
-        }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          throw new Error("Senha inválida");
-        }
-
-        return user;
-      }
-    })
+    }),
   ],
+
+  // Estratégia de sessão via JWT para leveza e performance
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 dias
-    updateAge: 24 * 60 * 60 // 24 horas
+    updateAge: 24 * 60 * 60,   // Atualiza token a cada 24h
   },
+
+  // Manipulação segura dos dados de sessão e JWT
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Persiste os dados do usuário no token
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
+    /**
+     * ✅ Manipula o JWT ao autenticar
+     */
+    async jwt({ token, account, user }) {
+      if (account) {
+        token.accessToken = account.access_token;
       }
 
-      // Atualiza o token de acesso do provedor OAuth
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
+      if (user) {
+        token.id = user.id;
       }
 
       return token;
     },
+
+    /**
+     * ✅ Injeta o ID do usuário na sessão visível no frontend
+     */
     async session({ session, token }) {
-      // Adiciona os dados do token à sessão
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.email = token.email as string;
-        session.accessToken = token.accessToken as string;
       }
       return session;
-    }
+    },
   },
-  pages: {
-    signIn: "/login",
-    error: "/auth/error"
-  },
-  debug: process.env.NODE_ENV === "development",
-  secret: process.env.NEXTAUTH_SECRET,
-  cookies: {
-    sessionToken: {
-      name: `next-auth.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production"
-      }
-    }
-  }
-};
 
-/**
- * Helper para obter o token JWT
- * @param req NextRequest - objeto da requisição
- * @returns Promise<JWT | null> - token decodificado ou null
- */
-export const getToken = async (req: NextRequest): Promise<any | null> => {
-  try {
-    return await nextAuthGetToken({
-      req,
-      secret: process.env.NEXTAUTH_SECRET!,
-      secureCookie: process.env.NODE_ENV === "production",
-      raw: false
-    });
-  } catch (error) {
-    console.error("Erro ao obter token:", error);
-    return null;
-  }
+  // Páginas customizadas
+  pages: {
+    signIn: "/login",         // Página de login customizada
+    error: "/auth/error",     // Página de erro customizada
+  },
+
+  // Segurança e ambiente
+  secret: env.secret,
+  debug: process.env.NODE_ENV === "development", // Apenas em dev
+  useSecureCookies: process.env.NODE_ENV === "production", // HTTPS only em produção
 };

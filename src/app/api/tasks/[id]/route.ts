@@ -1,68 +1,103 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getToken } from '@/lib/auth';
+// app/api/tasks/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+
+// Tipos para o corpo da requisição
+type TaskUpdateData = {
+  title?: string
+  description?: string | null
+  completed?: boolean
+}
 
 /**
  * PUT /api/tasks/[id]
  * Atualiza título, descrição ou status da tarefa do usuário autenticado.
  */
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params; // Obtém o parâmetro 'id' da URL
-
-  // Converte o 'id' de string para número
-  const taskId = parseInt(id, 10);
+  const { id } = params
 
   try {
-    // Verifica se a conversão foi bem-sucedida
+    // Verifica a sessão do usuário
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
+
+    // Converte e valida o ID
+    const taskId = parseInt(id, 10)
     if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'ID inválido. O ID da tarefa deve ser um número.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'ID inválido. O ID da tarefa deve ser um número.' },
+        { status: 400 }
+      )
     }
 
-    // Verifica o token de autenticação do usuário
-    const token = await getToken(req);
-    if (!token?.id || typeof token.id !== 'string') {
-      return NextResponse.json({ error: 'Não autorizado. Token inválido ou ausente.' }, { status: 401 });
-    }
+    // Obtém e valida os dados do corpo
+    const body: TaskUpdateData = await req.json()
+    const { title, description, completed } = body
 
-    // Obtém os dados enviados no corpo da requisição (JSON)
-    const body = await req.json();
-    const { title, description, completed } = body;
-
-    // Valida os dados recebidos
     if (title && typeof title !== 'string') {
-      return NextResponse.json({ error: 'Título inválido. O título deve ser uma string.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Título inválido. O título deve ser uma string.' },
+        { status: 400 }
+      )
     }
 
-    if (description && typeof description !== 'string') {
-      return NextResponse.json({ error: 'Descrição inválida. A descrição deve ser uma string.' }, { status: 400 });
+    if (description !== undefined && typeof description !== 'string' && description !== null) {
+      return NextResponse.json(
+        { error: 'Descrição inválida. Deve ser string ou null.' },
+        { status: 400 }
+      )
     }
 
-    // Verifica se a tarefa com o 'id' existe no banco de dados
+    // Verifica existência da tarefa e permissão
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
-    });
+      select: { userId: true }
+    })
 
-    // Se a tarefa não existir ou não pertencer ao usuário, retorna erro 403
-    if (!existingTask || existingTask.userId !== token.id) {
-      return NextResponse.json({ error: 'Tarefa não encontrada ou não pertence ao usuário.' }, { status: 403 });
+    if (!existingTask) {
+      return NextResponse.json(
+        { error: 'Tarefa não encontrada.' },
+        { status: 404 }
+      )
     }
 
-    // Atualiza a tarefa com os novos dados, se fornecidos
+    if (existingTask.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Acesso negado. Esta tarefa pertence a outro usuário.' },
+        { status: 403 }
+      )
+    }
+
+    // Prepara dados para atualização
+    const updateData: Partial<TaskUpdateData> = {}
+    
+    if (title) updateData.title = title.trim()
+    if (description !== undefined) {
+      updateData.description = description ? description.trim() : null
+    }
+    if (typeof completed === 'boolean') updateData.completed = completed
+
+    // Atualiza a tarefa
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
-      data: {
-        ...(title && { title: title.trim() }), // Atualiza o título se fornecido
-        ...(description !== undefined && { description: description.trim() || null }), // Atualiza a descrição, ou define como null se vazio
-        ...(typeof completed === 'boolean' && { completed }), // Atualiza o status de completado se fornecido
-      },
-    });
+      data: updateData
+    })
 
-    // Retorna a tarefa atualizada como resposta
-    return NextResponse.json(updatedTask);
-  } catch (error: any) {
-    // Em caso de erro, loga o erro e retorna uma mensagem de erro genérica
-    console.error('[PUT TASK ERROR]', error);
-    return NextResponse.json({ error: 'Erro ao atualizar tarefa. Por favor, tente novamente.' }, { status: 500 });
+    return NextResponse.json(updatedTask)
+  } catch (error) {
+    console.error('[TASK_UPDATE_ERROR]', error)
+    return NextResponse.json(
+      { error: 'Erro interno ao atualizar tarefa.' },
+      { status: 500 }
+    )
   }
 }
 
@@ -71,43 +106,61 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  * Exclui a tarefa do usuário autenticado.
  */
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params; // Obtém o parâmetro 'id' da URL
-
-  // Converte o 'id' de string para número
-  const taskId = parseInt(id, 10);
+  const { id } = params
 
   try {
-    // Verifica se a conversão foi bem-sucedida
+    // Verifica a sessão do usuário
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
+
+    // Converte e valida o ID
+    const taskId = parseInt(id, 10)
     if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'ID inválido. O ID da tarefa deve ser um número.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'ID inválido. O ID da tarefa deve ser um número.' },
+        { status: 400 }
+      )
     }
 
-    // Verifica o token de autenticação do usuário
-    const token = await getToken(req);
-    if (!token?.id || typeof token.id !== 'string') {
-      return NextResponse.json({ error: 'Não autorizado. Token inválido ou ausente.' }, { status: 401 });
-    }
-
-    // Verifica se a tarefa com o 'id' existe no banco de dados
+    // Verifica existência da tarefa e permissão
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-    });
+      select: { userId: true }
+    })
 
-    // Se a tarefa não existir ou não pertencer ao usuário, retorna erro 403
-    if (!task || task.userId !== token.id) {
-      return NextResponse.json({ error: 'Tarefa não encontrada ou não pertence ao usuário.' }, { status: 403 });
+    if (!task) {
+      return NextResponse.json(
+        { error: 'Tarefa não encontrada.' },
+        { status: 404 }
+      )
     }
 
-    // Exclui a tarefa do banco de dados
-    await prisma.task.delete({
-      where: { id: taskId },
-    });
+    if (task.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Acesso negado. Esta tarefa pertence a outro usuário.' },
+        { status: 403 }
+      )
+    }
 
-    // Retorna uma mensagem confirmando a exclusão
-    return NextResponse.json({ message: 'Tarefa excluída com sucesso.' });
-  } catch (error: any) {
-    // Em caso de erro, loga o erro e retorna uma mensagem de erro genérica
-    console.error('[DELETE TASK ERROR]', error);
-    return NextResponse.json({ error: 'Erro ao excluir tarefa. Por favor, tente novamente.' }, { status: 500 });
+    // Exclui a tarefa
+    await prisma.task.delete({
+      where: { id: taskId }
+    })
+
+    return NextResponse.json(
+      { success: true, message: 'Tarefa excluída com sucesso.' }
+    )
+  } catch (error) {
+    console.error('[TASK_DELETE_ERROR]', error)
+    return NextResponse.json(
+      { error: 'Erro interno ao excluir tarefa.' },
+      { status: 500 }
+    )
   }
 }

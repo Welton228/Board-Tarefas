@@ -1,51 +1,62 @@
 // lib/prisma.ts
+import { PrismaClient } from "@prisma/client";
 
-/**
- * Configuração do cliente Prisma para o Next.js
- * 
- * Este arquivo gerencia a instância do Prisma Client, garantindo que apenas uma instância
- * seja criada e reutilizada durante o hot-reload no desenvolvimento.
- */
-
-import { PrismaClient } from '@prisma/client';
-
-// 1. Definição do tipo global para TypeScript
-// Extendemos o escopo global para incluir nossa instância do Prisma
+// Evita múltiplas instâncias do Prisma no desenvolvimento (Hot Reload)
 declare global {
   // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 
-// 2. Criação ou reutilização da instância do Prisma
 /**
- * Instância do Prisma Client:
- * - Em produção: sempre cria uma nova instância
- * - Em desenvolvimento: reutiliza a instância existente se disponível
- * - Tipagem segura com TypeScript
+ * Cria uma instância única do PrismaClient
  */
-export const prisma: PrismaClient = global.prisma || new PrismaClient({
-  log: process.env.NODE_ENV === 'development' 
-    ? ['query', 'error', 'warn'] 
-    : ['error'],
-});
+const criarClientePrisma = (): PrismaClient => {
+  const cliente = new PrismaClient({
+    log: process.env.NODE_ENV === 'development'
+      ? ['query', 'warn', 'error']  // Logs detalhados no dev
+      : ['warn', 'error'],          // Logs essenciais em produção
+  });
 
-// 3. Configuração específica para ambiente de desenvolvimento
-/**
- * Em desenvolvimento, armazenamos a instância no escopo global
- * para evitar vazamento de memória durante o hot-reload do Next.js
- */
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+  // Apenas em desenvolvimento, mostra logs no console
+  if (process.env.NODE_ENV === 'development') {
+    cliente.$on('query', (e:any) => {
+      console.log(`[Prisma Query] ${e.query} | Params: ${e.params} | ${e.duration}ms`);
+    });
+
+    cliente.$on('warn', (e:any) => {
+      console.warn(`[Prisma Warn] ${e.message}`);
+    });
+
+    cliente.$on('error', (e:any) => {
+      console.error(`[Prisma Error] ${e.message}`);
+    });
+  }
+
+  return cliente;
+};
+
+// Usa singleton global no dev para evitar múltiplas conexões
+const prisma = globalThis.prisma ?? criarClientePrisma();
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prisma = prisma;
 }
 
-// 4. Boas práticas ao encerrar a aplicação
-/**
- * Configura listeners para eventos de encerramento
- * Garante que a conexão seja fechada adequadamente
- */
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-});
+// Desconecta ao encerrar o processo (em produção)
+if (process.env.NODE_ENV === "production") {
+  const encerrar = async (signal: NodeJS.Signals) => {
+    console.log(`[Prisma] Sinal recebido (${signal}), desconectando...`);
+    await prisma.$disconnect();
+    process.exit(0);
+  };
 
-// 5. Exportação padrão
+  if (typeof window === "undefined") {
+    process.on("SIGINT", encerrar);
+    process.on("SIGTERM", encerrar);
+    process.on("beforeExit", async () => {
+      await prisma.$disconnect();
+    });
+  }
+}
+
 export default prisma;
