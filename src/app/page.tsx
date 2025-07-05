@@ -109,7 +109,7 @@ const Home = () => {
           </span>
           <br className="hidden sm:inline" />
           <span className="bg-gradient-to-r from-blue-200 via-blue-100 to-white bg-clip-text text-transparent">
-            e tarefas com eficiência
+           {' '} e tarefas com eficiência
           </span>
         </motion.h1>
 
