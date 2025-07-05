@@ -1,7 +1,6 @@
 // Gerador do Prisma Client para comunicação com o banco de dados
 generator client {
   provider        = "prisma-client-js"
-  output          = "./node_modules/@prisma/client"
   binaryTargets   = ["native", "rhel-openssl-1.0.x"] // Compatibilidade com servidor Linux
   previewFeatures = ["interactiveTransactions"]      // Permite transações mais poderosas
 }
