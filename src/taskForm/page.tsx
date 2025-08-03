@@ -107,7 +107,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
           type="text"
           placeholder="Ex: Estudar Next.js 15"
           {...register('title')}
-          className="p-3 rounded-xl bg-gray-900 text-black border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-lg font-semibold"
+          className="p-3 rounded-xl bg-gray-900 text-gray-100 border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-lg font-semibold"
         />
         {errors.title && (
           <p className="text-red-500 text-sm mt-1">{errors.title.message}</p>
@@ -123,7 +123,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
           id="description"
           placeholder="Adicione mais detalhes sobre a tarefa..."
           {...register('description')}
-          className="p-3 rounded-xl bg-gray-900 text-black border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-base max-h-40 overflow-y-auto"
+          className="p-3 rounded-xl bg-gray-900 text-gray-100 border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-base max-h-40 overflow-y-auto"
         />
         {errors.description && (
           <p className="text-red-500 text-sm mt-1">{errors.description.message}</p>
