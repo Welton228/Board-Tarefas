@@ -1,92 +1,66 @@
-// Gerador do Prisma Client para comunicação com o banco de dados
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "rhel-openssl-1.0.x"] // Compatibilidade com servidor Linux
-  previewFeatures = ["interactiveTransactions"]      // Permite transações mais poderosas
+  previewFeatures = ["interactiveTransactions"]
+  binaryTargets   = ["native", "rhel-openssl-1.0.x"]
 }
 
-// Configuração da fonte de dados: PostgreSQL
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // Define o banco de dados via variável de ambiente
+  url      = env("DATABASE_URL")
 }
 
-//
-// MODELO DO USUÁRIO – Compatível com NextAuth e customizações próprias
-//
 model User {
-  id             String    @id @default(cuid())                 // ID único do usuário
-  email          String    @unique                             // E-mail único
-  password       String?                                        // Opcional – usado se for implementar login por senha
-  name           String?                                        // Nome do usuário
-  image          String?                                        // URL do avatar
-  emailVerified  DateTime?                                      // Verificação de e-mail (via NextAuth)
-
-  createdAt      DateTime  @default(now())                      // Registro de criação
-  updatedAt      DateTime  @updatedAt                           // Atualizado automaticamente
-
-  // Relações com NextAuth
-  accounts       Account[]                                      // Conexões OAuth (Google, etc)
-  sessions       Session[]                                      // Sessões ativas do usuário
-
-  // Relação com tarefas
-  tasks          Task[]                                         // Um usuário pode ter várias tarefas
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  name          String?
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  tasks         Task[]
 }
 
-//
-// MODELO DE TAREFA – Ligado ao usuário
-//
 model Task {
-  id          Int      @id @default(autoincrement())            // ID numérico da tarefa
-  title       String                                               // Título obrigatório
-  description String?                                              // Descrição opcional
-  completed   Boolean  @default(false)                             // Por padrão, tarefa está "pendente"
-  createdAt   DateTime @default(now())                             // Registro de criação
-
-  userId      String                                               // Chave estrangeira
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-                                                                    // Se o usuário for deletado, remove suas tarefas
 
-  @@index([userId])                                                // Índice para buscas por usuário
+  @@index([userId])
 }
 
-//
-// MODELO DE CONTA – Armazena provedores OAuth conectados ao usuário
-//
 model Account {
-  id                 String   @id @default(cuid())             // ID único da conta OAuth
-  userId             String                                     // Relaciona ao usuário
-  type               String                                     // Tipo de conta (oauth, email, etc)
-  provider           String                                     // Ex: 'google'
-  providerAccountId  String                                     // ID da conta no provedor
-  refresh_token      String?                                    // Token de atualização (Google)
-  access_token       String?                                    // Token de acesso (Google)
-  expires_at         Int?                                       // Timestamp de expiração
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])                       // Garante que não há duplicidade de conta
+  @@unique([provider, providerAccountId])
 }
 
-//
-// MODELO DE SESSÃO – Gerencia sessões persistentes do usuário
-//
 model Session {
-  id           String   @id @default(cuid())                   // ID único da sessão
-  sessionToken String   @unique                               // Token da sessão
-  userId       String                                          // Relacionado ao usuário
-  expires      DateTime                                       // Validade da sessão
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-//
-// MODELO DE VERIFICAÇÃO – Usado em fluxos de login por e-mail
-//
 model VerificationToken {
   identifier String
   token      String   @unique
