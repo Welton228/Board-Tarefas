@@ -1,144 +1,245 @@
 // lib/auth.ts
+/**
+ * NextAuth + Google + PrismaAdapter (Supabase/Postgres) — configuração robusta
+ * ---------------------------------------------------------------------------------
+ * Melhorias:
+ * - Corrigida tipagem (string | null → string | undefined).
+ * - Função computeAccessTokenExpires aceita "expires_in" opcional.
+ * - Busca refresh_token no banco quando o Google não envia.
+ * - Logs mais claros e seguros.
+ */
+
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions, Account, User } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import GoogleProvider from "next-auth/providers/google";
 import prisma from "@/lib/prisma";
 
-/**
- * Função utilitária para validar as variáveis de ambiente necessárias
- */
-const getEnvVars = () => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const secret = process.env.NEXTAUTH_SECRET;
+// ───────────────────────────────────────────────────────────────────────────────
+// Constantes e variáveis de ambiente
+// ───────────────────────────────────────────────────────────────────────────────
 
-  if (!clientId || !clientSecret) {
+const GOOGLE_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+].join(" ");
+
+const isProd = process.env.NODE_ENV === "production";
+
+function getEnv() {
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+  const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+  const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     throw new Error("❌ GOOGLE_CLIENT_ID e/ou GOOGLE_CLIENT_SECRET não definidos no .env");
   }
 
-  if (!secret || secret.length < 32) {
+  if (!NEXTAUTH_SECRET || NEXTAUTH_SECRET.length < 32) {
     throw new Error("❌ NEXTAUTH_SECRET inválido ou muito curto (mínimo 32 caracteres)");
   }
 
-  return { clientId, clientSecret, secret };
-};
+  if (isProd && !NEXTAUTH_URL) {
+    console.warn(
+      "⚠️ Recomenda-se definir NEXTAUTH_URL em produção para callbacks estáveis (ex.: https://seu-dominio.vercel.app)."
+    );
+  }
 
-const env = getEnvVars();
+  return { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXTAUTH_SECRET, NEXTAUTH_URL };
+}
+
+const ENV = getEnv();
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ───────────────────────────────────────────────────────────────────────────────
 
 /**
- * Configuração do NextAuth
+ * Busca o refresh_token salvo no banco (tabela Account) caso o Google não o envie.
  */
+async function getRefreshTokenFromDB(userId: string): Promise<string | undefined> {
+  try {
+    const account = await prisma.account.findFirst({
+      where: { userId, provider: "google" },
+      select: { refresh_token: true },
+    });
+    // Retorna sempre string | undefined (nunca null)
+    return account?.refresh_token ?? undefined;
+  } catch (err) {
+    console.error("❌ Falha ao buscar refresh_token no banco:", err);
+    return undefined;
+  }
+}
+
+/**
+ * Cálculo robusto do timestamp de expiração do access token.
+ * Aceita "expires_at" (do DB) e "expires_in" (do callback inicial).
+ */
+function computeAccessTokenExpires(
+  account?: Partial<Pick<Account, "expires_at">> & { expires_in?: number }
+): number {
+  const now = Date.now();
+
+  if (account?.expires_at) {
+    return account.expires_at * 1000; // segundos → ms
+  }
+
+  const seconds = typeof account?.expires_in === "number" ? account.expires_in : 3600; // fallback 1h
+  return now + seconds * 1000;
+}
+
+/**
+ * Renova o access token usando o refresh token do Google.
+ */
+async function refreshAccessToken(oldToken: JWT): Promise<JWT> {
+  try {
+    const refreshToken = (oldToken.refreshToken as string | undefined) ?? undefined;
+    if (!refreshToken) {
+      return { ...oldToken, error: "NoRefreshToken" };
+    }
+
+    const tokenUrl = "https://oauth2.googleapis.com/token";
+
+    const body = new URLSearchParams({
+      client_id: ENV.GOOGLE_CLIENT_ID,
+      client_secret: ENV.GOOGLE_CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    });
+
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    const refreshed = await response.json();
+
+    if (!response.ok) {
+      console.error("❌ Erro do endpoint do Google ao renovar token:", refreshed);
+      return { ...oldToken, error: "RefreshAccessTokenError" };
+    }
+
+    return {
+      ...oldToken,
+      accessToken: refreshed.access_token ?? (oldToken.accessToken as string | undefined),
+      accessTokenExpires: Date.now() + (refreshed.expires_in ? refreshed.expires_in * 1000 : 3600 * 1000),
+      refreshToken: refreshed.refresh_token ?? (oldToken.refreshToken as string | undefined),
+      error: undefined,
+    };
+  } catch (error) {
+    console.error("❌ Exceção ao renovar o access token:", error);
+    return { ...oldToken, error: "RefreshAccessTokenError" };
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Configuração NextAuth
+// ───────────────────────────────────────────────────────────────────────────────
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
 
   providers: [
     GoogleProvider({
-      clientId: env.clientId,
-      clientSecret: env.clientSecret,
+      clientId: ENV.GOOGLE_CLIENT_ID,
+      clientSecret: ENV.GOOGLE_CLIENT_SECRET,
       authorization: {
         params: {
           prompt: "consent",
-          access_type: "offline", // Garante refresh token
+          access_type: "offline",
           response_type: "code",
-          scope:
-            "openid email profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+          scope: GOOGLE_SCOPES,
         },
       },
     }),
   ],
 
   session: {
-    strategy: "jwt", // Sessão baseada em JWT (mais leve que banco)
-    maxAge: 30 * 24 * 60 * 60, // 30 dias
-    updateAge: 24 * 60 * 60, // Atualiza token a cada 24h
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
 
   callbacks: {
-    /**
-     * Callback executado sempre que um JWT é criado/atualizado
-     */
-    async jwt({ token, account, user }) {
-      // Primeiro login do usuário
+    async jwt({ token, account, user }): Promise<JWT> {
+      // Primeiro login
       if (account && user) {
+        const typedAccount = account as Account & { expires_in?: number };
+        const typedUser = user as User;
+
+        const refreshToken =
+          typedAccount.refresh_token ??
+          (token.refreshToken as string | undefined) ??
+          (await getRefreshTokenFromDB(typedUser.id));
+
         return {
           ...token,
-          id: user.id,
-          name: user.name ?? undefined,   // ⬅️ corrigido
-          email: user.email ?? undefined, // ⬅️ corrigido
-          image: user.image ?? undefined, // ⬅️ corrigido
-          accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          accessTokenExpires: Date.now() + Number(account.expires_in) * 1000,
+          id: typedUser.id,
+          name: typedUser.name ?? token.name,
+          email: typedUser.email ?? token.email,
+          picture: typedUser.image ?? (token.picture as string | undefined),
+          image: typedUser.image ?? (token.image as string | undefined),
+          accessToken: typedAccount.access_token ?? (token.accessToken as string | undefined),
+          refreshToken: refreshToken ?? undefined,
+          accessTokenExpires: computeAccessTokenExpires(typedAccount),
         };
       }
 
-      // Token ainda válido → retorna como está
-      if (Date.now() < (token.accessTokenExpires as number)) {
+      // Token válido ainda
+      if (Date.now() < ((token.accessTokenExpires as number | undefined) ?? 0)) {
         return token;
       }
 
-      // Token expirado → tenta renovar
+      // Expirado → tenta renovar
       return await refreshAccessToken(token);
     },
 
-    /**
-     * Callback que define os dados expostos na sessão
-     */
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id;
-        session.user.name = token.name ?? undefined;   // ⬅️ corrigido
-        session.user.email = token.email ?? undefined; // ⬅️ corrigido
-        session.user.image = (token.image as string) ?? undefined; // ⬅️ corrigido
+        (session.user as any).id = token.id as string;
+        session.user.name = (token.name as string | undefined) ?? session.user.name ?? undefined;
+        session.user.email = (token.email as string | undefined) ?? session.user.email ?? undefined;
+        session.user.image = (token.image as string | undefined) ?? session.user.image ?? undefined;
       }
-      session.accessToken = token.accessToken;
-      session.error = token.error;
+
+      (session as any).accessToken = token.accessToken as string | undefined;
+      (session as any).error = token.error as string | undefined;
 
       return session;
     },
   },
 
   pages: {
-    signIn: "/login", // Página customizada de login
-    error: "/auth/error", // Página customizada de erro
+    signIn: "/login",
+    error: "/auth/error",
   },
 
-  secret: env.secret,
-  debug: process.env.NODE_ENV === "development",
-  useSecureCookies: process.env.NODE_ENV === "production",
+  /**
+   * Segurança / Cookies:
+   * - useSecureCookies em produção para marcar cookies como "Secure".
+   */
+
+  secret: ENV.NEXTAUTH_SECRET,
+  debug: !isProd,
+  useSecureCookies: isProd,
+
+   /**
+   * Events úteis para depuração (opcional; deixe comentado se não precisar de logs extras):
+   */
+  // events: {
+  //   async signIn(message) {
+  //     console.log("▶️ signIn event:", message);
+  //   },
+  //   async session(message) {
+  //     console.log("▶️ session event:", message);
+  //   },
+  //   async error(error) {
+  //     console.error("▶️ events.error:", error);
+  //   },
+  // },
 };
-
-/**
- * Função responsável por renovar o access token usando o refresh token
- */
-async function refreshAccessToken(token: any) {
-  try {
-    const url =
-      "https://oauth2.googleapis.com/token?" +
-      new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: token.refreshToken!,
-      });
-
-    const response = await fetch(url, { method: "POST" });
-    const refreshedTokens = await response.json();
-
-    if (!response.ok) throw refreshedTokens;
-
-    return {
-      ...token,
-      accessToken: refreshedTokens.access_token,
-      accessTokenExpires: Date.now() + Number(refreshedTokens.expires_in) * 1000,
-      refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
-    };
-  } catch (error) {
-    console.error("❌ Erro ao renovar o access token:", error);
-
-    return {
-      ...token,
-      error: "RefreshAccessTokenError",
-    };
-  }
-}
