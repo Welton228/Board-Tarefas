@@ -4,9 +4,9 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
+      name?: string;
+      email?: string;
+      image?: string;
     };
     accessToken?: string;
     error?: string;
@@ -22,9 +22,9 @@ declare module 'next-auth/jwt' {
     error?: string;
     user?: {
       id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
+      name?: string;
+      email?: string;
+      image?: string;
     };
   }
 }
