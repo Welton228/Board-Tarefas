@@ -8,127 +8,91 @@ import { LogIn, LogOut, ArrowLeft, LayoutDashboard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
- * Header do sistema
- * - Compatível com NextAuth (Google)
- * - Correções para evitar 404 no redirecionamento pós-login/logout
+ * 🔷 Header do sistema
+ * - Controla login/logout do usuário via Google (NextAuth)
+ * - Inclui proteção contra redirecionamentos inválidos (404)
+ * - Utiliza boas práticas de clean code e acessibilidade
  */
 const Header: React.FC = () => {
-  const { data: session, status } = useSession({ required: false });
+  const { data: session, status } = useSession();
   const [scrolled, setScrolled] = useState(false);
   const [isHoveringUser, setIsHoveringUser] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   /**
-   * Cria um callbackUrl absoluto baseado na origem atual
-   * Isso evita problemas quando o NextAuth tenta compor a URL
-   * (útil tanto em localhost quanto em produção).
+   * ✅ Gera uma URL absoluta a partir de um caminho relativo
+   * Evita inconsistência de domínio entre ambientes (dev/produção)
    */
-  const getAbsoluteCallback = useCallback((path = "/") => {
+  const getAbsoluteUrl = useCallback((path = "/") => {
     if (typeof window === "undefined") return path;
-    try {
-      return `${window.location.origin}${path.startsWith("/") ? path : `/${path}`}`;
-    } catch {
-      return path;
-    }
+    const origin = window.location.origin.replace(/\/$/, ""); // remove barra final
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    return `${origin}${cleanPath}`;
   }, []);
 
   /**
-   * Login com Google
-   * - redirect: false para controle manual
-   * - callbackUrl absoluto para evitar mismatches com NEXTAUTH_URL
+   * 🔹 Login com Google
+   * - Usa redirecionamento automático do NextAuth
+   * - Evita `redirect: false` para prevenir 404
    */
   const handleLogin = useCallback(async () => {
-    if (isLoading) return; // previne clique múltiplo
+    if (isLoading) return; // evita duplo clique
     setIsLoading(true);
 
-    const callbackUrl = getAbsoluteCallback("/dashboard");
-
     try {
-      const result = await signIn("google", {
-        redirect: false,           // controla o redirecionamento manualmente
-        callbackUrl,               // URL absoluta (ex: https://meusite.com/dashboard)
+      await signIn("google", {
+        callbackUrl: getAbsoluteUrl("/dashboard"),
       });
-
-      // result pode ser undefined em alguns cenários; preferimos usar callbackUrl como fallback
-      const target = (result && (result as any).url) ? (result as any).url : callbackUrl;
-
-      // segurança extra: verifica se target é uma string antes de push
-      if (typeof target === "string" && target.length > 0) {
-        // router.push aceita tanto path relativo quanto absoluto
-        router.push(target);
-      } else {
-        // fallback seguro
-        router.push("/dashboard");
-      }
     } catch (error) {
       console.error("Erro no login:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [getAbsoluteCallback, isLoading, router]);
+  }, [getAbsoluteUrl, isLoading]);
 
   /**
-   * Logout
-   * - redirect: false para controle manual
-   * - callbackUrl absoluto; redireciona para home após sair
+   * 🔹 Logout
+   * - Usa redirecionamento automático para home
    */
   const handleLogout = useCallback(async () => {
     if (isLoading) return;
     setIsLoading(true);
 
-    const callbackUrl = getAbsoluteCallback("/");
-
     try {
-      const result = await signOut({
-        redirect: false,
-        callbackUrl,
+      await signOut({
+        callbackUrl: getAbsoluteUrl("/"),
       });
-
-      const target = (result && (result as any).url) ? (result as any).url : callbackUrl;
-
-      if (typeof target === "string" && target.length > 0) {
-        router.push(target);
-      } else {
-        router.push("/");
-      }
     } catch (error) {
       console.error("Erro no logout:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [getAbsoluteCallback, isLoading, router]);
+  }, [getAbsoluteUrl, isLoading]);
 
   /**
-   * Inicial do nome do usuário
+   * 🔤 Retorna a inicial do nome do usuário
    */
   const getInitial = useCallback((name?: string | null) => {
-    if (!name) return "";
-    return name.trim().charAt(0).toUpperCase();
+    return name?.trim().charAt(0).toUpperCase() ?? "";
   }, []);
 
+  /**
+   * 🎨 Estilos reutilizáveis dos botões
+   */
   const buttonStyles = {
     base: "relative flex items-center justify-center gap-2 text-white font-medium shadow-lg transition-all duration-300 overflow-hidden",
     size: "py-2 px-4 sm:px-5 rounded-xl",
     border: "border border-opacity-30",
   };
 
-  /** Efeito de scroll para mudar background do header */
+  /**
+   * 🌫️ Efeito de scroll: altera o background do header ao rolar a página
+   */
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    const handleScroll = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        setScrolled(window.scrollY > 10);
-      }, 50);
-    };
-
+    const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      clearTimeout(timeoutId);
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   return (
@@ -136,16 +100,17 @@ const Header: React.FC = () => {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={`fixed top-0 w-full h-20 z-50 transition-all duration-500 ${
+      className={`fixed top-0 w-full h-20 z-50 flex justify-center items-center px-4 transition-all duration-500 ${
         scrolled
           ? "bg-gradient-to-r from-gray-900 via-blue-900 to-gray-900 backdrop-blur-xl shadow-2xl border-b border-blue-500/20"
           : "bg-gradient-to-r from-gray-800 via-blue-800 to-gray-800"
-      } flex justify-center items-center px-4`}
+      }`}
       role="banner"
     >
       <section className="w-full max-w-7xl flex items-center justify-between">
+        {/* 🔹 Navegação principal */}
         <nav className="flex items-center space-x-4 sm:space-x-6" aria-label="Navegação principal">
-          {/* Botão voltar para página inicial */}
+          {/* Botão voltar para home */}
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Link
               href="/"
@@ -161,7 +126,7 @@ const Header: React.FC = () => {
             </Link>
           </motion.div>
 
-          {/* Botão acessar painel, se usuário já estiver logado */}
+          {/* Botão acessar painel */}
           {session?.user && (
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -177,20 +142,22 @@ const Header: React.FC = () => {
           )}
         </nav>
 
-        {/* Área do usuário / login */}
+        {/* 🔹 Área do usuário */}
         {status === "loading" ? (
+          // Esqueleto de carregamento
           <div className="flex items-center gap-4" aria-busy="true">
-            <div className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse" aria-hidden="true"></div>
-            <div className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse" aria-hidden="true"></div>
+            <div className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse" />
+            <div className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse" />
           </div>
         ) : session ? (
+          // Quando o usuário está logado
           <motion.div
             className="flex items-center gap-2 sm:gap-4"
             onHoverStart={() => setIsHoveringUser(true)}
             onHoverEnd={() => setIsHoveringUser(false)}
             aria-label="Área do usuário"
           >
-            {/* Avatar do usuário */}
+            {/* Avatar */}
             <motion.div className="relative" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
               <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold text-lg shadow-md">
                 {getInitial(session.user?.name)}
@@ -208,12 +175,12 @@ const Header: React.FC = () => {
               </AnimatePresence>
             </motion.div>
 
-            {/* Nome do usuário */}
+            {/* Nome */}
             <span className="hidden sm:inline text-white font-medium text-base truncate max-w-[120px]">
               {session.user?.name}
             </span>
 
-            {/* Botão de logout */}
+            {/* Botão sair */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -222,20 +189,12 @@ const Header: React.FC = () => {
               aria-label="Sair da conta"
               className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-red-600 to-red-700 hover:shadow-red-500/20 ${buttonStyles.border} border-red-500`}
             >
-              <motion.span
-                className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity"
-                initial={{ x: -100 }}
-                whileHover={{ x: 100 }}
-                transition={{ duration: 1 }}
-                aria-hidden="true"
-              />
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline">Sair</span>
-              {isLoading && <span className="sr-only">Processando logout...</span>}
             </motion.button>
           </motion.div>
         ) : (
-          // Botão de login com Google
+          // Quando o usuário NÃO está logado
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -244,16 +203,8 @@ const Header: React.FC = () => {
             aria-label="Entrar na conta"
             className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-green-600 to-green-700 hover:shadow-green-500/20 ${buttonStyles.border} border-green-500`}
           >
-            <motion.span
-              className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity"
-              initial={{ x: -100 }}
-              whileHover={{ x: 100 }}
-              transition={{ duration: 1 }}
-              aria-hidden="true"
-            />
             <LogIn className="w-5 h-5" />
             <span className="hidden sm:inline">Acessar</span>
-            {isLoading && <span className="sr-only">Processando login...</span>}
           </motion.button>
         )}
       </section>
