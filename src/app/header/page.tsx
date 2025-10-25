@@ -8,10 +8,11 @@ import { LogIn, LogOut, ArrowLeft, LayoutDashboard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
- * 🔷 Header do sistema
- * - Controla login/logout do usuário via Google (NextAuth)
- * - Inclui proteção contra redirecionamentos inválidos (404)
- * - Utiliza boas práticas de clean code e acessibilidade
+ * ✅ HEADER DO SISTEMA
+ * - Gerencia autenticação via Google (NextAuth)
+ * - Controla redirecionamento pós-login/logout
+ * - Evita 404 e loops de autenticação
+ * - Clean code e boas práticas com React Hooks
  */
 const Header: React.FC = () => {
   const { data: session, status } = useSession();
@@ -21,79 +22,82 @@ const Header: React.FC = () => {
   const router = useRouter();
 
   /**
-   * ✅ Gera uma URL absoluta a partir de um caminho relativo
-   * Evita inconsistência de domínio entre ambientes (dev/produção)
+   * ✅ Cria uma URL absoluta baseada no ambiente atual.
+   * Isso evita erros quando o NEXTAUTH_URL não bate com o domínio.
+   * (funciona tanto em localhost quanto em produção na Vercel)
    */
-  const getAbsoluteUrl = useCallback((path = "/") => {
+  const getAbsoluteUrl = useCallback((path: string) => {
     if (typeof window === "undefined") return path;
-    const origin = window.location.origin.replace(/\/$/, ""); // remove barra final
-    const cleanPath = path.startsWith("/") ? path : `/${path}`;
-    return `${origin}${cleanPath}`;
+    const origin = window.location.origin;
+    return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
   }, []);
 
   /**
-   * 🔹 Login com Google
-   * - Usa redirecionamento automático do NextAuth
-   * - Evita `redirect: false` para prevenir 404
+   * ✅ Lógica de login com Google
+   * - Usa redirect manual para controle do fluxo.
+   * - Redireciona com URL absoluta.
    */
   const handleLogin = useCallback(async () => {
-    if (isLoading) return; // evita duplo clique
+    if (isLoading) return;
     setIsLoading(true);
 
     try {
-      await signIn("google", {
-        callbackUrl: getAbsoluteUrl("/dashboard"),
+      const callbackUrl = getAbsoluteUrl("/dashboard");
+
+      // Inicia o login sem redirecionar automaticamente
+      const result = await signIn("google", {
+        redirect: false,
+        callbackUrl,
       });
-    } catch (error) {
-      console.error("Erro no login:", error);
+
+      // Determina a URL final (garantindo que sempre vá ao dashboard)
+      const target = (result as any)?.url || callbackUrl;
+      router.push(target);
+    } catch (err) {
+      console.error("Erro ao fazer login:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [getAbsoluteUrl, isLoading]);
+  }, [getAbsoluteUrl, router, isLoading]);
 
   /**
-   * 🔹 Logout
-   * - Usa redirecionamento automático para home
+   * ✅ Lógica de logout
+   * - Sai da conta e redireciona para a home.
    */
   const handleLogout = useCallback(async () => {
     if (isLoading) return;
     setIsLoading(true);
 
     try {
-      await signOut({
-        callbackUrl: getAbsoluteUrl("/"),
-      });
-    } catch (error) {
-      console.error("Erro no logout:", error);
+      const callbackUrl = getAbsoluteUrl("/");
+      const result = await signOut({ redirect: false, callbackUrl });
+      const target = (result as any)?.url || callbackUrl;
+      router.push(target);
+    } catch (err) {
+      console.error("Erro ao sair:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [getAbsoluteUrl, isLoading]);
+  }, [getAbsoluteUrl, router, isLoading]);
 
   /**
-   * 🔤 Retorna a inicial do nome do usuário
+   * ✅ Retorna a inicial do nome do usuário.
    */
-  const getInitial = useCallback((name?: string | null) => {
-    return name?.trim().charAt(0).toUpperCase() ?? "";
-  }, []);
+  const getInitial = (name?: string | null) =>
+    name ? name.trim().charAt(0).toUpperCase() : "";
 
   /**
-   * 🎨 Estilos reutilizáveis dos botões
-   */
-  const buttonStyles = {
-    base: "relative flex items-center justify-center gap-2 text-white font-medium shadow-lg transition-all duration-300 overflow-hidden",
-    size: "py-2 px-4 sm:px-5 rounded-xl",
-    border: "border border-opacity-30",
-  };
-
-  /**
-   * 🌫️ Efeito de scroll: altera o background do header ao rolar a página
+   * ✅ Efeito de scroll para alterar a aparência do Header.
    */
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const buttonBase =
+    "relative flex items-center justify-center gap-2 text-white font-medium shadow-lg transition-all duration-300 overflow-hidden";
+  const buttonSize = "py-2 px-4 sm:px-5 rounded-xl";
 
   return (
     <motion.header
@@ -108,9 +112,12 @@ const Header: React.FC = () => {
       role="banner"
     >
       <section className="w-full max-w-7xl flex items-center justify-between">
-        {/* 🔹 Navegação principal */}
-        <nav className="flex items-center space-x-4 sm:space-x-6" aria-label="Navegação principal">
-          {/* Botão voltar para home */}
+        {/* === Navegação principal === */}
+        <nav
+          className="flex items-center space-x-4 sm:space-x-6"
+          aria-label="Navegação principal"
+        >
+          {/* Botão para página inicial */}
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Link
               href="/"
@@ -126,15 +133,15 @@ const Header: React.FC = () => {
             </Link>
           </motion.div>
 
-          {/* Botão acessar painel */}
+          {/* Botão "Meu Painel" se usuário estiver logado */}
           {session?.user && (
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => router.push("/dashboard")}
-              aria-label="Acessar painel de controle"
               disabled={isLoading}
-              className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-blue-500/30 ${buttonStyles.border} border-blue-500`}
+              aria-label="Ir para o painel de controle"
+              className={`${buttonBase} ${buttonSize} bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-blue-500/30 border border-blue-500`}
             >
               <LayoutDashboard className="w-5 h-5" />
               <span className="hidden sm:inline">Meu Painel</span>
@@ -142,23 +149,22 @@ const Header: React.FC = () => {
           )}
         </nav>
 
-        {/* 🔹 Área do usuário */}
+        {/* === Área do Usuário / Login === */}
         {status === "loading" ? (
-          // Esqueleto de carregamento
+          // Loader
           <div className="flex items-center gap-4" aria-busy="true">
-            <div className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse" />
-            <div className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse" />
+            <div className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse"></div>
+            <div className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse"></div>
           </div>
         ) : session ? (
-          // Quando o usuário está logado
+          // Usuário autenticado
           <motion.div
             className="flex items-center gap-2 sm:gap-4"
             onHoverStart={() => setIsHoveringUser(true)}
             onHoverEnd={() => setIsHoveringUser(false)}
-            aria-label="Área do usuário"
           >
             {/* Avatar */}
-            <motion.div className="relative" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+            <motion.div className="relative" whileHover={{ scale: 1.1 }}>
               <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold text-lg shadow-md">
                 {getInitial(session.user?.name)}
               </div>
@@ -169,39 +175,38 @@ const Header: React.FC = () => {
                     animate={{ scale: 1.2, opacity: 0.4 }}
                     exit={{ scale: 0.8, opacity: 0 }}
                     className="absolute inset-0 rounded-full bg-blue-400 -z-10"
-                    aria-hidden="true"
                   />
                 )}
               </AnimatePresence>
             </motion.div>
 
-            {/* Nome */}
+            {/* Nome do usuário */}
             <span className="hidden sm:inline text-white font-medium text-base truncate max-w-[120px]">
               {session.user?.name}
             </span>
 
-            {/* Botão sair */}
+            {/* Botão de Logout */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleLogout}
               disabled={isLoading}
               aria-label="Sair da conta"
-              className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-red-600 to-red-700 hover:shadow-red-500/20 ${buttonStyles.border} border-red-500`}
+              className={`${buttonBase} ${buttonSize} bg-gradient-to-r from-red-600 to-red-700 hover:shadow-red-500/20 border border-red-500`}
             >
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline">Sair</span>
             </motion.button>
           </motion.div>
         ) : (
-          // Quando o usuário NÃO está logado
+          // Usuário não autenticado → botão Login
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleLogin}
             disabled={isLoading}
             aria-label="Entrar na conta"
-            className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-green-600 to-green-700 hover:shadow-green-500/20 ${buttonStyles.border} border-green-500`}
+            className={`${buttonBase} ${buttonSize} bg-gradient-to-r from-green-600 to-green-700 hover:shadow-green-500/20 border border-green-500`}
           >
             <LogIn className="w-5 h-5" />
             <span className="hidden sm:inline">Acessar</span>
