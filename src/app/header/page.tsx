@@ -7,18 +7,113 @@ import { useRouter } from "next/navigation";
 import { LogIn, LogOut, ArrowLeft, LayoutDashboard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const Header = () => {
-  // Obtém dados da sessão e status de carregamento
-  const { data: session, status } = useSession({
-    required: false,
-  });
-
+/**
+ * Header do sistema
+ * - Compatível com NextAuth (Google)
+ * - Correções para evitar 404 no redirecionamento pós-login/logout
+ */
+const Header: React.FC = () => {
+  const { data: session, status } = useSession({ required: false });
   const [scrolled, setScrolled] = useState(false);
   const [isHoveringUser, setIsHoveringUser] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  // Efeito para alterar o estilo do header ao rolar a página (com throttle simples)
+  /**
+   * Cria um callbackUrl absoluto baseado na origem atual
+   * Isso evita problemas quando o NextAuth tenta compor a URL
+   * (útil tanto em localhost quanto em produção).
+   */
+  const getAbsoluteCallback = useCallback((path = "/") => {
+    if (typeof window === "undefined") return path;
+    try {
+      return `${window.location.origin}${path.startsWith("/") ? path : `/${path}`}`;
+    } catch {
+      return path;
+    }
+  }, []);
+
+  /**
+   * Login com Google
+   * - redirect: false para controle manual
+   * - callbackUrl absoluto para evitar mismatches com NEXTAUTH_URL
+   */
+  const handleLogin = useCallback(async () => {
+    if (isLoading) return; // previne clique múltiplo
+    setIsLoading(true);
+
+    const callbackUrl = getAbsoluteCallback("/dashboard");
+
+    try {
+      const result = await signIn("google", {
+        redirect: false,           // controla o redirecionamento manualmente
+        callbackUrl,               // URL absoluta (ex: https://meusite.com/dashboard)
+      });
+
+      // result pode ser undefined em alguns cenários; preferimos usar callbackUrl como fallback
+      const target = (result && (result as any).url) ? (result as any).url : callbackUrl;
+
+      // segurança extra: verifica se target é uma string antes de push
+      if (typeof target === "string" && target.length > 0) {
+        // router.push aceita tanto path relativo quanto absoluto
+        router.push(target);
+      } else {
+        // fallback seguro
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      console.error("Erro no login:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getAbsoluteCallback, isLoading, router]);
+
+  /**
+   * Logout
+   * - redirect: false para controle manual
+   * - callbackUrl absoluto; redireciona para home após sair
+   */
+  const handleLogout = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    const callbackUrl = getAbsoluteCallback("/");
+
+    try {
+      const result = await signOut({
+        redirect: false,
+        callbackUrl,
+      });
+
+      const target = (result && (result as any).url) ? (result as any).url : callbackUrl;
+
+      if (typeof target === "string" && target.length > 0) {
+        router.push(target);
+      } else {
+        router.push("/");
+      }
+    } catch (error) {
+      console.error("Erro no logout:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getAbsoluteCallback, isLoading, router]);
+
+  /**
+   * Inicial do nome do usuário
+   */
+  const getInitial = useCallback((name?: string | null) => {
+    if (!name) return "";
+    return name.trim().charAt(0).toUpperCase();
+  }, []);
+
+  const buttonStyles = {
+    base: "relative flex items-center justify-center gap-2 text-white font-medium shadow-lg transition-all duration-300 overflow-hidden",
+    size: "py-2 px-4 sm:px-5 rounded-xl",
+    border: "border border-opacity-30",
+  };
+
+  /** Efeito de scroll para mudar background do header */
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
@@ -30,69 +125,11 @@ const Header = () => {
     };
 
     window.addEventListener("scroll", handleScroll);
-
     return () => {
       window.removeEventListener("scroll", handleScroll);
       clearTimeout(timeoutId);
     };
   }, []);
-
-  /**
-   * Função para login com Google
-   * - Usa signIn com redirect: false para controlar o redirecionamento manualmente
-   * - Em caso de sucesso, redireciona para /dashboard
-   * - Captura e loga erros
-   */
-  const handleLogin = useCallback(async () => {
-    try {
-      setIsLoading(true);
-
-      const result = await signIn("google", { redirect: false });
-
-      if (result?.error) {
-        console.error("Erro no login:", result.error);
-        // Aqui pode ser adicionado feedback visual (toast, modal etc)
-      } else if (result?.ok) {
-        router.push("/dashboard"); // Redireciona manualmente após login bem-sucedido
-      }
-    } catch (error) {
-      console.error("Erro no login:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [router]);
-
-  /**
-   * Função para logout
-   * - Chama signOut com redirect: false para controle manual
-   */
-  const handleLogout = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      await signOut({ redirect: false });
-      router.push("/"); // Redireciona para home após logout
-    } catch (error) {
-      console.error("Erro no logout:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [router]);
-
-  /**
-   * Retorna a inicial do nome do usuário para exibir no avatar
-   */
-  const getInitial = useCallback((name?: string | null) => {
-    if (!name) return "";
-    const trimmedName = name.trim();
-    return trimmedName.charAt(0).toUpperCase();
-  }, []);
-
-  // Estilos base para botões para reutilização
-  const buttonStyles = {
-    base: "relative flex items-center justify-center gap-2 text-white font-medium shadow-lg transition-all duration-300 overflow-hidden",
-    size: "py-2 px-4 sm:px-5 rounded-xl",
-    border: "border border-opacity-30",
-  };
 
   return (
     <motion.header
@@ -107,11 +144,8 @@ const Header = () => {
       role="banner"
     >
       <section className="w-full max-w-7xl flex items-center justify-between">
-        {/* Navegação à esquerda - Botão Home */}
-        <nav
-          className="flex items-center space-x-4 sm:space-x-6"
-          aria-label="Navegação principal"
-        >
+        <nav className="flex items-center space-x-4 sm:space-x-6" aria-label="Navegação principal">
+          {/* Botão voltar para página inicial */}
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Link
               href="/"
@@ -127,7 +161,7 @@ const Header = () => {
             </Link>
           </motion.div>
 
-          {/* Botão Dashboard visível somente se usuário estiver logado */}
+          {/* Botão acessar painel, se usuário já estiver logado */}
           {session?.user && (
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -143,42 +177,24 @@ const Header = () => {
           )}
         </nav>
 
-        {/* Área do usuário */}
+        {/* Área do usuário / login */}
         {status === "loading" ? (
-          // Skeleton enquanto a sessão está carregando
           <div className="flex items-center gap-4" aria-busy="true">
-            <div
-              className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse"
-              aria-hidden="true"
-            ></div>
-            <div
-              className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse"
-              aria-hidden="true"
-            ></div>
+            <div className="w-9 h-9 rounded-full bg-gray-700/50 animate-pulse" aria-hidden="true"></div>
+            <div className="hidden sm:block w-24 h-6 rounded bg-gray-700/50 animate-pulse" aria-hidden="true"></div>
           </div>
         ) : session ? (
-          // Usuário autenticado
           <motion.div
             className="flex items-center gap-2 sm:gap-4"
             onHoverStart={() => setIsHoveringUser(true)}
             onHoverEnd={() => setIsHoveringUser(false)}
             aria-label="Área do usuário"
           >
-            {/* Avatar com inicial e efeito de hover */}
-            <motion.div
-              className="relative"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              aria-label="Avatar do usuário"
-            >
-              <div
-                className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold text-lg shadow-md"
-                aria-hidden="true"
-              >
+            {/* Avatar do usuário */}
+            <motion.div className="relative" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white font-bold text-lg shadow-md">
                 {getInitial(session.user?.name)}
               </div>
-
-              {/* Efeito pulse atrás do avatar no hover */}
               <AnimatePresence>
                 {isHoveringUser && (
                   <motion.div
@@ -206,7 +222,6 @@ const Header = () => {
               aria-label="Sair da conta"
               className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-red-600 to-red-700 hover:shadow-red-500/20 ${buttonStyles.border} border-red-500`}
             >
-              {/* Efeito de brilho no hover */}
               <motion.span
                 className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity"
                 initial={{ x: -100 }}
@@ -220,7 +235,7 @@ const Header = () => {
             </motion.button>
           </motion.div>
         ) : (
-          // Botão de login para usuários não autenticados
+          // Botão de login com Google
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -229,7 +244,6 @@ const Header = () => {
             aria-label="Entrar na conta"
             className={`${buttonStyles.base} ${buttonStyles.size} bg-gradient-to-r from-green-600 to-green-700 hover:shadow-green-500/20 ${buttonStyles.border} border-green-500`}
           >
-            {/* Efeito de brilho no hover */}
             <motion.span
               className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity"
               initial={{ x: -100 }}
