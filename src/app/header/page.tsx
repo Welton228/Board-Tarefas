@@ -36,28 +36,42 @@ const Header: React.FC = () => {
    * - Usa redirect manual e força o retorno ao dashboard
    * - Corrige bug onde o login voltava pra "/" (home)
    */
+  // const handleLogin = useCallback(async () => {
+  //   if (isLoading) return;
+  //   setIsLoading(true);
+
+  //   try {
+  //     const callbackUrl = getAbsoluteUrl("/dashboard");
+
+  //     // Faz o login manualmente e obtém a URL de redirecionamento
+  //     const result = await signIn("google", { redirect: false, callbackUrl });
+
+  //     // Se o login for bem-sucedido, redireciona pro dashboard
+  //     if (result?.ok || result?.url) {
+  //       router.push(result.url || callbackUrl);
+  //     } else {
+  //       console.error("Falha no login:", result);
+  //     }
+  //   } catch (err) {
+  //     console.error("Erro ao fazer login:", err);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, [getAbsoluteUrl, router, isLoading]);
+
   const handleLogin = useCallback(async () => {
-    if (isLoading) return;
-    setIsLoading(true);
+  if (isLoading) return;
+  setIsLoading(true);
+  try {
+    // ⛔️ Remova o redirect manual
+    await signIn("google", { callbackUrl: "/ClientDashboard" });
+  } catch (err) {
+    console.error("Erro ao fazer login:", err);
+  } finally {
+    setIsLoading(false);
+  }
+}, [isLoading]);
 
-    try {
-      const callbackUrl = getAbsoluteUrl("/dashboard");
-
-      // Faz o login manualmente e obtém a URL de redirecionamento
-      const result = await signIn("google", { redirect: false, callbackUrl });
-
-      // Se o login for bem-sucedido, redireciona pro dashboard
-      if (result?.ok || result?.url) {
-        router.push(result.url || callbackUrl);
-      } else {
-        console.error("Falha no login:", result);
-      }
-    } catch (err) {
-      console.error("Erro ao fazer login:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [getAbsoluteUrl, router, isLoading]);
 
   /**
    * ✅ LOGOUT

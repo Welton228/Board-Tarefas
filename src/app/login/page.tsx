@@ -54,13 +54,21 @@ export default function LoginPage() {
         <p className="mb-6 text-gray-300">
           Faça login com sua conta Google para acessar o painel.
         </p>
-        <button
+        {/* <button
           // 🔹 Removido o callbackUrl para não redirecionar automaticamente
           onClick={() => signIn("google")}
           className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg border border-green-500"
         >
           Entrar com Google
-        </button>
+        </button> */}
+
+        <button
+  onClick={() => signIn("google", { callbackUrl: "/ClientDashboard" })}
+  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg border border-green-500"
+>
+  Entrar com Google
+</button>
+
       </section>
     </main>
   );
