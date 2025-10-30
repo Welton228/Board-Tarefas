@@ -63,7 +63,7 @@ export default function LoginPage() {
         </button> */}
 
         <button
-  onClick={() => signIn("google", { callbackUrl: "/ClientDashboard" })}
+  onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
   className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg border border-green-500"
 >
   Entrar com Google

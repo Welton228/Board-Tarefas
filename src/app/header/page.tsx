@@ -64,7 +64,7 @@ const Header: React.FC = () => {
   setIsLoading(true);
   try {
     // ⛔️ Remova o redirect manual
-    await signIn("google", { callbackUrl: "/ClientDashboard" });
+    await signIn("google", { callbackUrl: "/dashboard" });
   } catch (err) {
     console.error("Erro ao fazer login:", err);
   } finally {
