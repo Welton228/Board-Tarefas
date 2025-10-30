@@ -1,4 +1,5 @@
 'use client';
+export const runtime = "nodejs";
 
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } from "react";
 import { useSession, signOut } from "next-auth/react";
