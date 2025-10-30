@@ -137,7 +137,7 @@ const Header: React.FC = () => {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push("/ClientDashboard")}
               disabled={isLoading}
               aria-label="Ir para o painel de controle"
               className={`${buttonBase} ${buttonSize} bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-blue-500/30 border border-blue-500`}
