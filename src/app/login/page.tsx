@@ -18,7 +18,7 @@ export default function LoginPage() {
   // Se já estiver logado, redireciona pro dashboard
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/dashboard");
+      router.replace("/ClientDashboard");
     }
   }, [status, router]);
 

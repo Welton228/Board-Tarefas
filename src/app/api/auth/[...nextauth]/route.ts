@@ -1,19 +1,37 @@
 // app/api/auth/[...nextauth]/route.ts
 
-// ✅ Garante que esta rota rode no runtime Node.js (necessário para OAuth, cookies e Prisma).
-// Em produção (Vercel), isso evita erros sutis quando o projeto tem outras rotas no Edge.
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+
+// ✅ Garante que a rota rode no ambiente Node.js (necessário para OAuth)
 export const runtime = "nodejs";
 
-// ✅ Evita qualquer tipo de cache nessa rota de autenticação.
-// (Você também poderia usar `export const revalidate = 0`, mas `dynamic` cobre bem.)
-export const dynamic = "force-dynamic";
+const handler = NextAuth({
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
 
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
+  // ✅ Define a página de login personalizada
+  pages: {
+    signIn: "/login",
+  },
 
-// ✅ Cria o handler do NextAuth usando as opções centralizadas em lib/auth.ts.
-// Observação: no App Router, o import correto é de "next-auth" (não "next-auth/next").
-const handler = NextAuth(authOptions);
+  callbacks: {
+    // ✅ Controla o redirecionamento após o login
+    async redirect({ url, baseUrl }) {
+      // Evita o redirecionamento automático para callbackUrl
+      // Sempre retorna o domínio base (mantém o usuário na home)
+      if (url.startsWith(baseUrl)) return url;
+      return baseUrl;
+    },
+  },
 
-// ✅ Exporta os métodos HTTP exigidos pelo App Router.
+  session: {
+    strategy: "jwt",
+  },
+});
+
 export { handler as GET, handler as POST };
