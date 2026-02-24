@@ -7,9 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { auth } from "@/lib/auth"; // ✅ CORRETO
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 
-
+import prisma from "@/lib/prisma";
 // =========================
 // POST - Criar nova tarefa
 // =========================
