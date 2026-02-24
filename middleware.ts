@@ -1,315 +1,106 @@
-// middleware.ts
-import { NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
-import type { NextRequest } from 'next/server';
-
-// Logger configurável (pode ser substituído por qualquer sistema de logging)
-const logger = {
-  error: (message: string, metadata?: Record<string, unknown>) => 
-    console.error(`[Middleware Error] ${message}`, metadata),
-  warn: (message: string, metadata?: Record<string, unknown>) => 
-    console.warn(`[Middleware Warning] ${message}`, metadata),
-  info: (message: string, metadata?: Record<string, unknown>) => 
-    console.log(`[Middleware Info] ${message}`, metadata),
-};
+import { auth } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 /**
- * Configurações do Middleware
+ * CONFIGURAÇÕES DE LOCALIZAÇÃO E ROTAS
+ * Centralizamos os caminhos para facilitar a manutenção futura.
  */
-
-// Idiomas suportados pelo sistema (usando const assertion para type safety)
 const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
 type Locale = typeof SUPPORTED_LOCALES[number];
 const DEFAULT_LOCALE: Locale = 'pt';
 
-// Definição de tipos para rotas
-type RouteCategory = 'public' | 'protected' | 'api';
-
-// Mapeamento de rotas por categoria (mais escalável que Set)
-const ROUTE_MAP: Record<RouteCategory, string[]> = {
-  public: [
-    'login',
-    'auth/error',
-    'auth/verify',
-    'password-reset'
-  ],
-  protected: [
-    'dashboard',
-    'profile',
-    'settings'
-  ],
-  api: [
-    'api/tasks',
-    'api/protected'
-  ]
-};
-
-// Feature flags (para habilitar/desabilitar funcionalidades)
-const FEATURE_FLAGS = {
-  STRICT_SECURITY: true,
-  ENHANCED_LOGGING: process.env.NODE_ENV !== 'production',
+const ROUTES = {
+  public: ['/login', '/auth/error', '/auth/verify'],
+  protected: ['/dashboard', '/profile', '/settings'],
+  apiPrefix: '/api'
 };
 
 /**
- * Classe de erros customizados para o middleware
+ * UTILS - FUNÇÕES AUXILIARES
  */
-class MiddlewareError extends Error {
-  constructor(
-    public readonly code: string,
-    public readonly statusCode: number,
-    message: string,
-    public readonly metadata?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'MiddlewareError';
-  }
+
+// Identifica o locale presente na URL
+function getLocale(pathname: string): Locale {
+  const firstSegment = pathname.split('/')[1];
+  return SUPPORTED_LOCALES.includes(firstSegment as Locale) 
+    ? (firstSegment as Locale) 
+    : DEFAULT_LOCALE;
 }
 
-class AuthenticationError extends MiddlewareError {
-  constructor(code: string, message: string, metadata?: Record<string, unknown>) {
-    super(code, 401, message, metadata);
-    this.name = 'AuthenticationError';
+// Limpa o locale da URL para facilitar a comparação com o mapeamento de rotas
+function getCleanPath(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  if (SUPPORTED_LOCALES.includes(segments[0] as Locale)) {
+    return `/${segments.slice(1).join('/')}`;
   }
-}
-
-class AuthorizationError extends MiddlewareError {
-  constructor(code: string, message: string, metadata?: Record<string, unknown>) {
-    super(code, 403, message, metadata);
-    this.name = 'AuthorizationError';
-  }
+  return pathname === '/' ? '/' : pathname;
 }
 
 /**
- * Funções utilitárias
+ * MIDDLEWARE PRINCIPAL
+ * O wrapper auth() injeta automaticamente a sessão no objeto 'req.auth'.
+ * Tipamos 'req' para garantir que o TypeScript reconheça a propriedade 'auth'.
  */
-
-// Verifica se um valor é um locale válido
-function isValidLocale(value: string): value is Locale {
-  return SUPPORTED_LOCALES.includes(value as Locale);
-}
-
-// Extrai o locale da URL ou retorna o padrão
-function extractLocale(pathParts: string[]): Locale {
-  const potentialLocale = pathParts[0];
-  return isValidLocale(potentialLocale) ? potentialLocale : DEFAULT_LOCALE;
-}
-
-// Verifica se a rota pertence a uma categoria específica
-function isRouteInCategory(path: string, category: RouteCategory): boolean {
-  const routeSegment = path.split('/')[0];
-  return ROUTE_MAP[category].some(route => 
-    route === routeSegment || route.startsWith(`${routeSegment}/`)
-  );
-}
-
-// Verifica se o token é inválido ou expirado
-function isTokenInvalid(token: any): boolean {
-  if (!token) return true;
-  if (typeof token !== 'object') return false;
+export default auth((req: NextRequest & { auth: any }) => {
+  const { nextUrl } = req;
+  const pathname = nextUrl.pathname;
   
-  // Token com erro específico
-  if ('error' in token && token.error === 'RefreshAccessTokenError') return true;
-  
-  // Token expirado (se tivermos expiração)
-  if ('exp' in token && typeof token.exp === 'number') {
-    return token.exp < Math.floor(Date.now() / 1000);
+  // 1. Extração de estado e metadados
+  const locale = getLocale(pathname);
+  const cleanPath = getCleanPath(pathname);
+  const isLoggedIn = !!req.auth; // Verifica se existe uma sessão válida
+
+  // 2. Classificação da Rota Atual
+  const isApiRoute = pathname.startsWith(ROUTES.apiPrefix);
+  const isPublicRoute = ROUTES.public.some(route => cleanPath.startsWith(route));
+  const isProtectedRoute = ROUTES.protected.some(route => cleanPath.startsWith(route));
+
+  /**
+   * 3. LÓGICA DE CONTROLE DE ACESSO (GUARDS)
+   */
+
+  // Regra 1: APIs não devem ser redirecionadas pelo middleware.
+  // Deixamos que o próprio arquivo da API retorne 401 JSON se necessário.
+  if (isApiRoute) {
+    return NextResponse.next();
   }
-  
-  return false;
-}
 
-// Cria headers de segurança padrão
-function createSecurityHeaders(requestHeaders: Headers): Headers {
-  const newHeaders = new Headers(requestHeaders);
-  
-  if (FEATURE_FLAGS.STRICT_SECURITY) {
-    newHeaders.set('X-Content-Type-Options', 'nosniff');
-    newHeaders.set('X-Frame-Options', 'DENY');
-    newHeaders.set('X-XSS-Protection', '1; mode=block');
-    newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Regra 2: Se o usuário estiver LOGADO e tentar acessar rotas de login/públicas,
+  // nós o enviamos diretamente para o dashboard.
+  if (isLoggedIn && isPublicRoute) {
+    return NextResponse.redirect(new URL(`/${locale}/dashboard`, nextUrl));
   }
-  
-  return newHeaders;
-}
 
-// Redireciona para página de login com contexto
-function redirectToLogin(
-  request: NextRequest, 
-  locale: Locale, 
-  returnPath: string,
-  error?: string
-): NextResponse {
-  const loginUrl = new URL(`/${locale}/login`, request.url);
-  
-  if (returnPath) {
-    loginUrl.searchParams.set('callbackUrl', `/${locale}/${returnPath}`);
+  // Regra 3: Se o usuário NÃO estiver logado e tentar acessar uma rota protegida,
+  // redirecionamos para o login salvando a URL de destino (callbackUrl).
+  if (!isLoggedIn && isProtectedRoute) {
+    const loginUrl = new URL(`/${locale}/login`, nextUrl);
+    loginUrl.searchParams.set("callbackUrl", nextUrl.href);
+    return NextResponse.redirect(loginUrl);
   }
-  
-  if (error) {
-    loginUrl.searchParams.set('error', error);
-  }
-  
-  if (FEATURE_FLAGS.ENHANCED_LOGGING) {
-    logger.info(`Redirecting to login`, { returnPath, error });
-  }
-  
-  return NextResponse.redirect(loginUrl);
-}
 
-// Função corrigida: Redireciona para login com erro específico
-function redirectToLoginWithError(
-  request: NextRequest,
-  locale: Locale,
-  returnPath: string,
-  errorCode: string
-): NextResponse {
-  return redirectToLogin(request, locale, returnPath, errorCode);
-}
-
-// Cria resposta de erro JSON para APIs
-function createJsonErrorResponse(
-  error: MiddlewareError,
-  requestHeaders: Headers
-): NextResponse {
-  logger.error(error.message, {
-    code: error.code,
-    status: error.statusCode,
-    metadata: error.metadata
-  });
+  // Regra 4: Para todas as outras rotas (como a Landing Page), apenas prosseguimos.
+  const response = NextResponse.next();
   
-  return NextResponse.json(
-    { 
-      error: error.code,
-      message: error.message,
-      ...(FEATURE_FLAGS.ENHANCED_LOGGING && { traceId: Date.now().toString(36) })
-    },
-    { 
-      status: error.statusCode, 
-      headers: createSecurityHeaders(requestHeaders) 
-    }
-  );
-}
+  // Adição de Headers de segurança e contexto de idioma
+  response.headers.set('x-locale', locale);
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+
+  return response;
+});
 
 /**
- * Middleware principal
- */
-export async function middleware(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
-  const pathParts = pathname.split('/').filter(Boolean);
-  
-  try {
-    // 1. Processamento inicial e extração do locale
-    const locale = extractLocale(pathParts);
-    const requestHeaders = createSecurityHeaders(request.headers);
-    requestHeaders.set('x-locale', locale);
-    
-    // Remove o locale para análise da rota
-    const routePath = pathParts.slice(
-      isValidLocale(pathParts[0]) ? 1 : 0
-    ).join('/');
-    
-    // 2. Verificação de autenticação para rotas relevantes
-    const isPublicRoute = isRouteInCategory(routePath, 'public');
-    const isProtectedRoute = isRouteInCategory(routePath, 'protected');
-    const isApiRoute = isRouteInCategory(routePath, 'api');
-    
-    // Se não for rota pública ou protegida, continuar sem verificação
-    if (!isPublicRoute && !isProtectedRoute && !isApiRoute) {
-      return NextResponse.next({ request: { headers: requestHeaders } });
-    }
-    
-    // 3. Obter token de autenticação
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-      secureCookie: process.env.NODE_ENV === 'production',
-    });
-    
-    // 4. Lógica de redirecionamento e autenticação
-    
-    // Caso 1: Usuário autenticado tentando acessar rota pública
-    if (token && isPublicRoute) {
-      if (isTokenInvalid(token)) {
-        return redirectToLoginWithError(request, locale, routePath, 'SessionExpired');
-      }
-      const dashboardUrl = new URL(`/${locale}/dashboard`, request.url);
-      return NextResponse.redirect(dashboardUrl);
-    }
-    
-    // Caso 2: Rota protegida sem autenticação ou com token inválido
-    if ((isProtectedRoute || isApiRoute) && (!token || isTokenInvalid(token))) {
-      if (isApiRoute) {
-        return createJsonErrorResponse(
-          new AuthenticationError(
-            'Unauthorized',
-            'Authentication required to access this resource',
-            { route: routePath }
-          ),
-          requestHeaders
-        );
-      }
-      return redirectToLogin(
-        request, 
-        locale, 
-        routePath,
-        isTokenInvalid(token) ? 'SessionExpired' : undefined
-      );
-    }
-    
-    // 5. Rotas válidas - continuar com a requisição
-    const response = NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-    
-    // Configurações adicionais para rotas protegidas
-    if (isProtectedRoute || isApiRoute) {
-      response.headers.set('Cache-Control', 'no-store, max-age=0');
-      
-      // Adiciona CORS headers para APIs se necessário
-      if (isApiRoute) {
-        response.headers.set('Access-Control-Allow-Origin', 
-          process.env.ALLOWED_ORIGINS || request.headers.get('origin') || '*');
-        response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      }
-    }
-    
-    return response;
-    
-  } catch (error) {
-    // Tratamento de erros centralizado
-    const locale = extractLocale(pathParts);
-    
-    if (error instanceof MiddlewareError) {
-      if (isRouteInCategory(pathParts.join('/'), 'api')) {
-        return createJsonErrorResponse(error, request.headers);
-      }
-      return redirectToLoginWithError(
-        request, 
-        locale, 
-        pathParts.join('/'), 
-        error.code
-      );
-    }
-    
-    logger.error('Unexpected middleware error', { 
-      error: error instanceof Error ? error.message : 'Unknown error',
-      path: pathname 
-    });
-    
-    return NextResponse.redirect(
-      new URL(`/${locale}/auth/error`, request.url), 
-      { headers: createSecurityHeaders(request.headers) }
-    );
-  }
-}
-
-/**
- * Configuração do Middleware
- * Aplica a todas as rotas exceto arquivos estáticos e de imagem
+ * MATCHER - FILTRO DE EXECUÇÃO
+ * Define quais caminhos o middleware deve ignorar para economizar recursos.
  */
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp|woff2)$).*)',
+    /*
+     * Ignora arquivos estáticos (imagens, ícones, fontes) e caminhos internos do Next.js.
+     * Executa em todas as rotas de página e API.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
