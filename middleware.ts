@@ -98,9 +98,12 @@ export default auth((req: NextRequest & { auth: any }) => {
 export const config = {
   matcher: [
     /*
-     * Ignora arquivos estáticos (imagens, ícones, fontes) e caminhos internos do Next.js.
-     * Executa em todas as rotas de página e API.
+     * Protege explicitamente as rotas que começam com o locale e nossas rotas protegidas.
+     * Isso evita que o middleware rode em requisições desnecessárias.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/(pt|en|es)/dashboard/:path*',
+    '/(pt|en|es)/profile/:path*',
+    '/(pt|en|es)/settings/:path*',
+    '/dashboard/:path*', // Caso acesse sem locale
   ],
 };

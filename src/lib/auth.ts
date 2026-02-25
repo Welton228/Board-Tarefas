@@ -76,17 +76,20 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     }),
   ],
 
-  cookies: {
-    sessionToken: {
-      name: isProd ? `__Secure-authjs.session-token` : `authjs.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: isProd,
-      },
+  // No lib/auth.ts
+cookies: {
+  sessionToken: {
+    // Vamos usar um nome fixo e desativar o prefixo Secure temporariamente 
+    // para garantir que o Middleware o enxergue.
+    name: `next-auth.session-token`, 
+    options: {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: isProd,
     },
   },
+},
 
   callbacks: {
     async jwt({ token, account, user }) {
