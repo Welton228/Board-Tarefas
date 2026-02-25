@@ -6,7 +6,7 @@
 
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+// import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import type { JWT } from "next-auth/jwt";
 
@@ -65,7 +65,7 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
  * via variável de ambiente AUTH_TRUST_HOST=true na Vercel.
  */
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  // adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   providers: [
     GoogleProvider({
