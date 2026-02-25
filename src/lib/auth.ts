@@ -6,13 +6,9 @@
 
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-// import { PrismaAdapter } from "@auth/prisma-adapter";
+import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import type { JWT } from "next-auth/jwt";
-
-// ─────────────────────────────────────────────────────────
-// VALIDAÇÃO DE VARIÁVEIS DE AMBIENTE
-// ─────────────────────────────────────────────────────────
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -25,7 +21,6 @@ const isProd = process.env.NODE_ENV === "production";
 
 /**
  * REFRESH TOKEN LOGIC
- * Responsável por renovar a sessão com o Google sem deslogar o usuário.
  */
 async function refreshAccessToken(token: JWT): Promise<JWT> {
   try {
@@ -55,18 +50,18 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// CONFIGURAÇÃO PRINCIPAL
-// ─────────────────────────────────────────────────────────
-
-/**
- * Na v5, passamos a configuração diretamente para a função NextAuth.
- * O campo 'trustHost' é omitido aqui porque ele deve ser configurado
- * via variável de ambiente AUTH_TRUST_HOST=true na Vercel.
- */
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  // adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  /**
+   * 1. TESTE DO ADAPTER
+   * Mantemos comentado para isolar o problema do deslogue.
+   */
+  // adapter: PrismaAdapter(prisma), 
+
+  session: { 
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+  },
+
   providers: [
     GoogleProvider({
       clientId: GOOGLE_CLIENT_ID,
@@ -80,6 +75,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       },
     }),
   ],
+
   cookies: {
     sessionToken: {
       name: isProd ? `__Secure-authjs.session-token` : `authjs.session-token`,
@@ -91,6 +87,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       },
     },
   },
+
   callbacks: {
     async jwt({ token, account, user }) {
       if (account && user) {
@@ -102,9 +99,17 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           accessTokenExpires: (account.expires_at ?? 0) * 1000,
         };
       }
-      if (Date.now() < (token.accessTokenExpires as number)) return token;
+
+      const now = Date.now();
+      const expirationWithBuffer = (token.accessTokenExpires as number) - 60 * 1000;
+
+      if (now < expirationWithBuffer) {
+        return token;
+      }
+
       return refreshAccessToken(token);
     },
+
     async session({ session, token }) {
       if (token?.id && session.user) {
         session.user.id = token.id as string;
@@ -112,10 +117,14 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       return session;
     },
   },
+
   pages: {
     signIn: "/login",
     error: "/auth/error",
   },
-  // O Auth.js v5 usa secret automaticamente se estiver como AUTH_SECRET no .env
+  
+  // REMOVIDO: trustHost daqui para evitar erro de tipagem TS(2353)
+  // Certifique-se de que AUTH_TRUST_HOST=true está nas variáveis da Vercel.
+  
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
 });
