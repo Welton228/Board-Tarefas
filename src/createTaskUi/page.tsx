@@ -6,16 +6,18 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiPlusCircle, FiX } from 'react-icons/fi';
+import { Loader2 } from 'lucide-react'; // Padronizando os ícones de loading
 
 /**
- * Esquema de validação com Zod para os dados do formulário
+ * ✅ ESQUEMA DE VALIDAÇÃO
+ * Aumentei o mínimo para 3 caracteres para evitar entradas vazias acidentais.
  */
 const taskSchema = z.object({
   title: z.string()
-    .min(1, 'O título é obrigatório')
+    .min(3, 'O título deve ter pelo menos 3 caracteres')
     .max(100, 'O título deve ter no máximo 100 caracteres'),
   description: z.string()
-    .min(1, 'A descrição é obrigatória')
+    .min(5, 'A descrição deve ser mais detalhada (mín. 5 caracteres)')
     .max(500, 'A descrição deve ter no máximo 500 caracteres'),
 });
 
@@ -23,12 +25,9 @@ type TaskFormData = z.infer<typeof taskSchema>;
 
 interface CreateTaskFormProps {
   onTaskCreated: (taskData: TaskFormData) => Promise<void> | void;
-  onClose?: () => void; // Opcional para fechar o modal
+  onClose?: () => void;
 }
 
-/**
- * Componente de formulário para criação de tarefas com design premium
- */
 const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated, onClose }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -40,31 +39,33 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated, onClose 
     formState: { errors, isValid },
   } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
-    mode: 'onChange', // Validação em tempo real
-    defaultValues: {
-      title: '',
-      description: '',
-    },
+    mode: 'onChange',
+    defaultValues: { title: '', description: '' },
   });
 
-  /**
-   * Envia os dados do formulário para a API
-   */
   const onSubmit = async (data: TaskFormData) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setShowSuccess(false);
 
     try {
+      // ✅ A lógica de fetch/API acontece no componente pai
       await onTaskCreated(data);
       
-      // Feedback visual de sucesso
       setShowSuccess(true);
       reset();
       
-      // Reset do feedback após 3 segundos
-      setTimeout(() => setShowSuccess(false), 3000);
+      // Se estiver em um modal, fecha após o sucesso
+      if (onClose) {
+        setTimeout(() => {
+          setShowSuccess(false);
+          onClose();
+        }, 2000);
+      } else {
+        setTimeout(() => setShowSuccess(false), 3000);
+      }
     } catch (error) {
-      console.error('Erro ao criar tarefa:', error);
+      console.error('[CREATE_TASK_ERROR]:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -79,120 +80,85 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ onTaskCreated, onClose 
     >
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="relative bg-gray-800/50 backdrop-blur-lg border border-gray-700/30 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-6"
+        className="relative bg-gray-900/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden p-7 space-y-6"
       >
-        {/* Botão de fechar (se estiver em um modal) */}
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-            aria-label="Fechar formulário"
+            className="absolute top-5 right-5 text-gray-500 hover:text-white transition-colors p-1"
+            aria-label="Fechar"
           >
-            <FiX size={24} />
+            <FiX size={20} />
           </button>
         )}
 
-        {/* Cabeçalho */}
-        <div className="text-center">
+        {/* Cabeçalho Premium */}
+        <div className="text-center space-y-2">
           <motion.div
-            whileHover={{ scale: 1.05 }}
-            className="inline-flex items-center justify-center bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-full mb-4"
+            whileHover={{ rotate: 90 }}
+            className="inline-flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-2xl mb-2 shadow-lg shadow-blue-500/20"
           >
             <FiPlusCircle className="text-white text-2xl" />
           </motion.div>
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+          <h2 className="text-2xl font-bold text-white tracking-tight">
             Nova Tarefa
           </h2>
-          <p className="text-gray-400 mt-1">Preencha os detalhes da sua tarefa</p>
+          <p className="text-gray-400 text-sm">Organize seu dia agora mesmo</p>
         </div>
 
-        {/* Campo Título */}
-        <div className="space-y-2">
-          <label htmlFor="title" className="block text-gray-300 text-sm font-medium">
-            Título *
-          </label>
-          <input
-            type="text"
-            id="title"
-            {...register('title')}
-            placeholder="Ex: Reunião com equipe"
-            className="w-full p-4 rounded-xl bg-gray-700/50 text-white placeholder-gray-400 border border-gray-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
-            maxLength={100}
-          />
-          {errors.title && (
-            <motion.p 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-red-400 text-sm mt-1"
-            >
-              {errors.title.message}
-            </motion.p>
-          )}
+        {/* Inputs */}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider ml-1">Título</label>
+            <input
+              {...register('title')}
+              placeholder="Ex: Estudar Banco de Dados"
+              disabled={isSubmitting}
+              className="w-full p-4 rounded-xl bg-gray-800/50 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder:text-gray-600"
+            />
+            {errors.title && <p className="text-red-400 text-xs mt-1 ml-1">{errors.title.message}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider ml-1">Descrição</label>
+            <textarea
+              {...register('description')}
+              placeholder="O que você precisa fazer?"
+              disabled={isSubmitting}
+              className="w-full p-4 h-32 resize-none rounded-xl bg-gray-800/50 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder:text-gray-600"
+            />
+            {errors.description && <p className="text-red-400 text-xs mt-1 ml-1">{errors.description.message}</p>}
+          </div>
         </div>
 
-        {/* Campo Descrição */}
-        <div className="space-y-2">
-          <label htmlFor="description" className="block text-gray-300 text-sm font-medium">
-            Descrição *
-          </label>
-          <textarea
-            id="description"
-            {...register('description')}
-            placeholder="Ex: Discutir os próximos passos do projeto"
-            className="w-full p-4 h-32 resize-none rounded-xl bg-gray-700/50 text-white placeholder-gray-400 border border-gray-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
-            maxLength={500}
-          />
-          {errors.description && (
-            <motion.p 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-red-400 text-sm mt-1"
-            >
-              {errors.description.message}
-            </motion.p>
-          )}
-        </div>
-
-        {/* Feedback de sucesso */}
+        {/* Sucesso e Botão */}
         <AnimatePresence>
           {showSuccess && (
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-green-600/20 text-green-400 p-3 rounded-lg border border-green-400/30 text-center"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-emerald-500/10 text-emerald-400 p-3 rounded-xl border border-emerald-500/20 text-center text-sm font-medium"
             >
-              Tarefa criada com sucesso!
+              ✓ Tarefa adicionada à sua lista!
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Botão de envio */}
         <motion.button
           type="submit"
           disabled={isSubmitting || !isValid}
-          whileHover={{ scale: isValid ? 1.02 : 1 }}
-          whileTap={{ scale: isValid ? 0.98 : 1 }}
-          className={`w-full py-4 px-6 rounded-xl font-semibold transition-all duration-300 ${
-            isSubmitting
-              ? 'bg-gray-600 cursor-not-allowed'
-              : isValid
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-lg hover:shadow-blue-500/20'
-                : 'bg-gray-700 cursor-not-allowed'
+          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-xl flex items-center justify-center gap-2 ${
+            isValid && !isSubmitting
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98]'
+              : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
           }`}
         >
           {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <motion.span
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="block w-5 h-5 border-2 border-white border-t-transparent rounded-full"
-              />
-              Criando...
-            </span>
+            <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
-            'Criar Tarefa'
+            'Confirmar Criação'
           )}
         </motion.button>
       </form>

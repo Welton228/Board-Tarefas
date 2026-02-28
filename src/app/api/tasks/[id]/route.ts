@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth'; // ✅ Usando a versão v5 correta
+import prisma from '../../../../lib/prisma';
+import { auth } from '../../../../../src/auth'; // ✅ Usando a versão v5 correta
 
 /**
  * PUT /api/tasks/[id]

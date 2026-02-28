@@ -4,29 +4,25 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
 
-// Esquema de validação com Zod
 const taskSchema = z.object({
-  title: z.string().min(1, 'O título é obrigatório'),
-  description: z.string().min(1, 'A descrição é obrigatória'),
+  title: z.string().min(1, 'O título é obrigatório').max(100),
+  description: z.string().min(1, 'A descrição é obrigatória').max(500),
 });
 
-// Tipagem do formulário
 type TaskFormData = z.infer<typeof taskSchema>;
 
-// Tipagem da task vinda como prop
 interface Task {
   id: string;
   title: string;
   description: string;
   completed: boolean;
   userId: string;
-  createdAt?: Date;
 }
 
-// Tipagem das props do componente
 interface TaskFormProps {
-  task?: Task; // Se existir, é edição
+  task?: Task;
   onClose?: () => void;
   onTaskSaved: () => void;
   onTaskUpdated?: () => void;
@@ -40,6 +36,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
 }) => {
   const isEditing = !!task;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
 
   const {
     register,
@@ -49,13 +46,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
     formState: { errors },
   } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-    },
+    defaultValues: { title: '', description: '' },
   });
 
-  // Preenche os campos caso esteja editando
   useEffect(() => {
     if (isEditing && task) {
       setValue('title', task.title);
@@ -64,6 +57,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
   }, [isEditing, task, setValue]);
 
   const onSubmit = async (data: TaskFormData) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
 
     const method = isEditing ? 'PUT' : 'POST';
@@ -76,17 +70,27 @@ const TaskForm: React.FC<TaskFormProps> = ({
         body: JSON.stringify(data),
       });
 
+      // ✅ TRATAMENTO DE SESSÃO: 
+      // Se a API retornar 401, forçamos o redirecionamento para o login
+      if (response.status === 401) {
+        router.push('/login?message=Sessão expirada. Faça login novamente.');
+        return;
+      }
+
       if (!response.ok) throw new Error('Erro ao salvar tarefa');
 
       if (isEditing && onTaskUpdated) {
         onTaskUpdated();
       } else {
         onTaskSaved();
-        reset(); // Limpa o formulário se for criação
+        reset();
       }
+
+      if (onClose) onClose();
+
     } catch (error: any) {
-      console.error(error.message);
-      // Aqui pode ser adicionado toast futuramente
+      console.error("Erro na requisição:", error.message);
+      alert("Houve um erro ao salvar a tarefa. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
@@ -95,48 +99,43 @@ const TaskForm: React.FC<TaskFormProps> = ({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="w-full max-w-2xl mx-auto space-y-4 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-lg"
+      className="w-full max-w-2xl mx-auto space-y-4 bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl border border-gray-800 shadow-2xl"
     >
-      {/* Campo do Título */}
       <div className="flex flex-col">
-        <label htmlFor="title" className="text-sm text-gray-300 mb-1">
+        <label htmlFor="title" className="text-sm font-medium text-gray-400 mb-1 ml-1">
           Título da Tarefa
         </label>
         <input
           id="title"
-          type="text"
-          placeholder="Ex: Estudar Next.js 15"
           {...register('title')}
-          className="p-3 rounded-xl bg-gray-900 text-gray-100 border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-lg font-semibold"
+          disabled={isSubmitting}
+          className="p-3 rounded-xl bg-gray-800 text-gray-100 border border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+          placeholder="O que precisa ser feito?"
         />
-        {errors.title && (
-          <p className="text-red-500 text-sm mt-1">{errors.title.message}</p>
-        )}
+        {errors.title && <span className="text-red-500 text-xs mt-1 ml-1">{errors.title.message}</span>}
       </div>
 
-      {/* Campo da Descrição */}
       <div className="flex flex-col">
-        <label htmlFor="description" className="text-sm text-gray-300 mb-1">
-          Descrição
+        <label htmlFor="description" className="text-sm font-medium text-gray-400 mb-1 ml-1">
+          Descrição detalhada
         </label>
         <textarea
           id="description"
-          placeholder="Adicione mais detalhes sobre a tarefa..."
           {...register('description')}
-          className="p-3 rounded-xl bg-gray-900 text-gray-100 border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-base max-h-40 overflow-y-auto"
+          disabled={isSubmitting}
+          className="p-3 rounded-xl bg-gray-800 text-gray-100 border border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[120px] resize-none"
+          placeholder="Descreva os detalhes..."
         />
-        {errors.description && (
-          <p className="text-red-500 text-sm mt-1">{errors.description.message}</p>
-        )}
+        {errors.description && <span className="text-red-500 text-xs mt-1 ml-1">{errors.description.message}</span>}
       </div>
 
-      {/* Botões */}
-      <div className="flex justify-end space-x-2 pt-2">
+      <div className="flex justify-end gap-3 pt-4">
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition"
+            disabled={isSubmitting}
+            className="px-6 py-2 rounded-xl text-gray-400 hover:text-white transition-colors"
           >
             Cancelar
           </button>
@@ -144,17 +143,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`px-4 py-2 rounded-lg ${
-            isSubmitting ? 'bg-gray-500' : 'bg-blue-600 hover:bg-blue-500'
-          } text-white transition`}
+          className="px-8 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold transition-all shadow-lg shadow-blue-900/20"
         >
-          {isSubmitting
-            ? isEditing
-              ? 'Salvando...'
-              : 'Criando...'
-            : isEditing
-            ? 'Salvar alterações'
-            : 'Criar tarefa'}
+          {isSubmitting ? 'Processando...' : isEditing ? 'Atualizar' : 'Criar Tarefa'}
         </button>
       </div>
     </form>

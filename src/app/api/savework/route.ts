@@ -1,154 +1,109 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma"; // Corrigido: importação padrão em vez de importação nomeada
+import { auth } from "../../../../src/auth"; // ✅ Mudança para o padrão Auth.js v5
+import prisma from "../../../lib/prisma";
 import { ZodError, z } from "zod";
 
 /**
- * Esquema de validação para tarefas usando Zod
- * Define a estrutura e regras de validação para os dados da tarefa
+ * 📝 Esquema de validação com Zod
+ * Centralizado para manter o Clean Code e evitar repetições.
  */
 const taskSchema = z.object({
   title: z.string()
-    .min(3, "Título deve ter pelo menos 3 caracteres")
-    .max(100, "Título não pode exceder 100 caracteres"),
+    .min(3, "O título deve ter pelo menos 3 caracteres")
+    .max(100, "O título não pode exceder 100 caracteres"),
   description: z.string()
-    .max(500, "Descrição não pode exceder 500 caracteres")
+    .max(500, "A descrição não pode exceder 500 caracteres")
     .optional()
     .default(''),
-  completed: z.boolean()
-    .default(false),
+  completed: z.boolean().default(false),
 });
 
 /**
- * POST /api/tasks
- * Cria uma nova tarefa para o usuário autenticado
+ * 🚀 POST - Salvar Trabalho/Tarefa
  */
 export async function POST(req: NextRequest) {
   try {
-    // 1. Autenticação - Verifica se o usuário está logado
-    const session = await getServerSession(authOptions);
+    // 1. Autenticação v5 (Mais estável no Next.js 15)
+    const session = await auth();
     
     if (!session?.user?.id) {
+      console.warn("[SAVEWORK_POST] Tentativa de acesso sem sessão válida.");
       return NextResponse.json(
-        { error: "Não autorizado. Faça login para continuar." },
+        { success: false, error: "Sessão expirada. Por favor, faça login novamente." },
         { status: 401 }
       );
     }
 
-    // 2. Validação dos dados de entrada
+    // 2. Validação de dados
     const body = await req.json();
     const validatedData = taskSchema.parse(body);
 
-    // 3. Verificação do usuário no banco de dados
-    const userExists = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true } // Apenas o ID para otimização
-    });
-
-    if (!userExists) {
-      return NextResponse.json(
-        { error: "Usuário não encontrado. Sua conta pode ter sido removida." },
-        { status: 404 }
-      );
-    }
-
-    // 4. Criação da tarefa no banco de dados
+    // 3. Persistência no Banco de Dados
+    // Usamos o ID da sessão garantido pelo Auth.js
     const newTask = await prisma.task.create({
       data: {
-        title: validatedData.title,
-        description: validatedData.description,
+        title: validatedData.title.trim(),
+        description: validatedData.description.trim(),
         completed: validatedData.completed,
         userId: session.user.id,
       },
       select: {
         id: true,
         title: true,
-        description: true,
         completed: true,
         createdAt: true,
-        updatedAt: true,
       },
     });
 
-    // 5. Log em ambiente de desenvolvimento
-    if (process.env.NODE_ENV === "development") {
-      console.log("[DEV] Tarefa criada:", {
-        id: newTask.id,
-        title: newTask.title,
-        userId: session.user.id
-      });
-    }
-
-    // 6. Resposta de sucesso
     return NextResponse.json(
       { 
-        success: true,
-        message: "Tarefa criada com sucesso!",
-        data: newTask
-      },
+        success: true, 
+        message: "Trabalho salvo com sucesso!", 
+        data: newTask 
+      }, 
       { status: 201 }
     );
 
   } catch (error) {
-    // Tratamento de erros específicos
     if (error instanceof ZodError) {
       return NextResponse.json(
         { 
-          success: false,
-          error: "Erro de validação",
-          details: error.errors.map(e => ({
-            field: e.path.join('.'),
-            message: e.message
-          }))
-        },
+          success: false, 
+          error: "Erro de validação", 
+          details: error.errors.map(e => e.message) 
+        }, 
         { status: 400 }
       );
     }
 
-    // Log de erro completo no servidor
-    console.error("[API ERROR] /api/tasks/POST:", error);
-
-    // Resposta genérica de erro
+    console.error("[API_ERROR_SAVEWORK]:", error);
     return NextResponse.json(
-      { 
-        success: false,
-        error: "Ocorreu um erro ao processar sua solicitação",
-        ...(process.env.NODE_ENV === "development" && {
-          debug: error instanceof Error ? error.message : String(error)
-        })
-      },
+      { success: false, error: "Erro interno ao salvar os dados." },
       { status: 500 }
     );
   }
 }
 
 /**
- * GET /api/tasks
- * Lista todas as tarefas do usuário autenticado
+ * 🔍 GET - Recuperar Trabalhos Salvos
  */
 export async function GET(req: NextRequest) {
   try {
-    // 1. Autenticação
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    // 2. Obter parâmetros de consulta
     const { searchParams } = new URL(req.url);
-    const completed = searchParams.get('completed');
     const search = searchParams.get('search') || '';
 
-    // 3. Consulta ao banco de dados com filtros
     const tasks = await prisma.task.findMany({
       where: {
         userId: session.user.id,
-        ...(completed && { completed: completed === 'true' }),
         ...(search && {
           OR: [
             { title: { contains: search, mode: 'insensitive' } },
@@ -156,36 +111,18 @@ export async function GET(req: NextRequest) {
           ]
         })
       },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        completed: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
 
-    return NextResponse.json(
-      { 
-        success: true,
-        data: tasks,
-        count: tasks.length
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ 
+      success: true, 
+      data: tasks 
+    }, { status: 200 });
 
   } catch (error) {
-    console.error("[API ERROR] /api/tasks/GET:", error);
-    
+    console.error("[API_ERROR_GET_SAVEWORK]:", error);
     return NextResponse.json(
-      { 
-        success: false,
-        error: "Erro ao buscar tarefas"
-      },
+      { success: false, error: "Falha ao carregar os dados." },
       { status: 500 }
     );
   }

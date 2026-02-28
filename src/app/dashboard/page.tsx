@@ -5,7 +5,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } fr
 import { useSession, signOut } from "next-auth/react"; // Unificado o import
 import { useRouter } from "next/navigation";
 import Head from "next/head";
-import CreateTaskForm from "@/createTaskUi/page";
+import CreateTaskForm from "../../createTaskUi/page";
 import TaskForm from "../../taskForm/page";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";

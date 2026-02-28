@@ -1,49 +1,38 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 /**
- * Esquema de validação com Zod para os campos do formulário
+ * 📝 Esquema de validação centralizado (Clean Code)
  */
 const taskSchema = z.object({
-  title: z.string().min(1, 'O título é obrigatório'),
-  description: z.string().min(1, 'A descrição é obrigatória'),
+  title: z.string().min(3, 'O título deve ter pelo menos 3 caracteres'),
+  description: z.string().min(5, 'A descrição deve ter pelo menos 5 caracteres'),
 });
 
-/**
- * Tipo inferido do formulário baseado no schema
- */
 type TaskFormData = z.infer<typeof taskSchema>;
 
-/**
- * Interface da Task para edição
- */
 interface Task {
   id: string;
   title: string;
   description: string;
   completed: boolean;
   userId: string;
-  createdAt?: Date;
 }
 
-/**
- * Props do componente TaskForm
- */
 interface TaskFormProps {
-  task?: Task; // se fornecido, formulário funciona em modo edição
-  onClose?: () => void; // opcional para fechar modal
-  onTaskSaved?: () => void; // callback ao salvar uma nova tarefa
-  onTaskUpdated?: () => void; // callback ao atualizar uma tarefa existente
+  task?: Task;
+  onClose?: () => void;
+  onTaskSaved?: () => void;
+  onTaskUpdated?: () => void;
 }
 
-/**
- * Componente TaskForm com criação e edição, validação e feedback animado
- */
 const TaskForm: React.FC<TaskFormProps> = ({
   task,
   onClose,
@@ -52,7 +41,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
 }) => {
   const isEditing = Boolean(task);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const router = useRouter();
 
   const {
     register,
@@ -62,14 +52,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
     formState: { errors, isValid },
   } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-    },
-    mode: 'onChange', // validação em tempo real
+    defaultValues: { title: '', description: '' },
+    mode: 'onChange',
   });
 
-  // Preenche os campos se estiver editando uma tarefa existente
   useEffect(() => {
     if (isEditing && task) {
       setValue('title', task.title);
@@ -77,15 +63,15 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
   }, [isEditing, task, setValue]);
 
-  // Mostra um toast temporário com mensagem
-  const showToast = (message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  };
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
 
-  // Função chamada ao enviar formulário
   const onSubmit = async (data: TaskFormData) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
+
     const method = isEditing ? 'PUT' : 'POST';
     const url = isEditing ? `/api/tasks/${task?.id}` : '/api/tasks';
 
@@ -96,18 +82,29 @@ const TaskForm: React.FC<TaskFormProps> = ({
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) throw new Error('Erro ao salvar tarefa');
+      // ✅ TRATAMENTO DE AUTH: Se der 401, a sessão expirou
+      if (response.status === 401) {
+        showToast('Sessão expirada. Redirecionando...', 'error');
+        setTimeout(() => router.push('/login'), 2000);
+        return;
+      }
 
+      if (!response.ok) throw new Error('Falha na comunicação com o servidor');
+
+      showToast(isEditing ? 'Tarefa atualizada!' : 'Tarefa criada com sucesso!');
+      
       if (isEditing) {
         onTaskUpdated?.();
-        showToast('Tarefa atualizada com sucesso!');
       } else {
-        onTaskSaved?.();
         reset();
-        showToast('Tarefa criada com sucesso!');
+        onTaskSaved?.();
       }
+      
+      // Fecha o modal após um breve delay para o usuário ver o sucesso
+      if (onClose) setTimeout(onClose, 1500);
+
     } catch (error: any) {
-      showToast(error.message || 'Erro ao salvar tarefa');
+      showToast(error.message || 'Erro inesperado', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -115,88 +112,72 @@ const TaskForm: React.FC<TaskFormProps> = ({
 
   return (
     <>
-      {/* Formulário */}
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-2xl mx-auto space-y-4 bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-lg"
+        className="w-full max-w-2xl mx-auto space-y-5 bg-gray-900/50 p-6 rounded-2xl border border-blue-500/10 shadow-2xl backdrop-blur-sm"
       >
-        {/* Campo Título */}
-        <div className="flex flex-col">
-          <label htmlFor="title" className="text-sm text-gray-300 mb-1">
-            Título da Tarefa
-          </label>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-blue-300/80 ml-1">Título</label>
           <input
-            id="title"
-            type="text"
-            placeholder="Ex: Estudar Next.js 15"
             {...register('title')}
-            className="p-3 rounded-xl bg-gray-900 text-white border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-lg font-semibold"
+            placeholder="O que precisa ser feito?"
             disabled={isSubmitting}
+            className="p-3 rounded-xl bg-gray-800 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
           />
-          {errors.title && (
-            <p className="text-red-500 text-sm mt-1">{errors.title.message}</p>
-          )}
+          {errors.title && <span className="text-red-400 text-xs ml-1">{errors.title.message}</span>}
         </div>
 
-        {/* Campo Descrição */}
-        <div className="flex flex-col">
-          <label htmlFor="description" className="text-sm text-gray-300 mb-1">
-            Descrição
-          </label>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-blue-300/80 ml-1">Descrição</label>
           <textarea
-            id="description"
-            placeholder="Adicione mais detalhes sobre a tarefa..."
             {...register('description')}
-            className="p-3 rounded-xl bg-gray-900 text-white border border-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 text-base max-h-40 overflow-y-auto"
+            placeholder="Detalhes da tarefa..."
+            rows={4}
             disabled={isSubmitting}
+            className="p-3 rounded-xl bg-gray-800 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all resize-none"
           />
-          {errors.description && (
-            <p className="text-red-500 text-sm mt-1">{errors.description.message}</p>
-          )}
+          {errors.description && <span className="text-red-400 text-xs ml-1">{errors.description.message}</span>}
         </div>
 
-        {/* Botões */}
-        <div className="flex justify-end space-x-2 pt-2">
+        <div className="flex justify-end items-center gap-3 pt-2">
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition"
-              disabled={isSubmitting}
+              className="px-5 py-2.5 text-gray-400 hover:text-white transition-colors"
             >
-              Cancelar
+              Descartar
             </button>
           )}
           <button
             type="submit"
             disabled={isSubmitting || !isValid}
-            className={`px-4 py-2 rounded-lg ${
-              isSubmitting
-                ? 'bg-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-500'
-            } text-white transition`}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-all shadow-lg shadow-blue-600/20"
           >
-            {isSubmitting
-              ? isEditing
-                ? 'Salvando...'
-                : 'Criando...'
-              : isEditing
-              ? 'Salvar alterações'
-              : 'Criar tarefa'}
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              isEditing ? 'Salvar' : 'Criar Agora'
+            )}
           </button>
         </div>
       </form>
 
-      {/* Toast animado para mensagens */}
+      {/* Toast Feedback */}
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="fixed top-6 right-6 bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg z-50"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className={`fixed bottom-6 right-6 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl z-[100] border ${
+              toast.type === 'success' 
+                ? 'bg-emerald-600 border-emerald-400/30' 
+                : 'bg-red-600 border-red-400/30'
+            }`}
           >
-            {toast}
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
           </motion.div>
         )}
       </AnimatePresence>

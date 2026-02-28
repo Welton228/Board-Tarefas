@@ -1,82 +1,84 @@
-import { ReactNode, Suspense } from "react";
-import localFont from "next/font/local";
-import { SessionProvider } from "next-auth/react";
+import { auth } from "@/src/auth"; // ✅ Importação correta do executor auth
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// Importações internas
-import { auth } from "@/lib/auth"; // Importação da sua configuração central de Auth
-import Header from "./header/page";
-import "./globals.css";
+// Configurações de Internacionalização (Locales)
+const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
+const DEFAULT_LOCALE = 'pt';
 
 /**
- * 🖋️ CONFIGURAÇÃO DE FONTES
- * Usando display: 'swap' para garantir que o texto seja legível durante o carregamento.
+ * 🛡️ MIDDLEWARE DE AUTENTICAÇÃO E LOCALIZAÇÃO
+ * Utiliza a função auth() como wrapper para ter acesso à sessão em tempo real.
  */
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-  display: 'swap',
+export default auth((req: NextRequest & { auth: any }) => {
+  const { nextUrl } = req;
+  const { pathname } = nextUrl;
+  
+  // 1. GESTÃO DE LOCALIZAÇÃO (Locale)
+  const segments = pathname.split('/').filter(Boolean);
+  const localeInUrl = SUPPORTED_LOCALES.includes(segments[0] as any) ? segments[0] : null;
+  const currentLocale = localeInUrl || DEFAULT_LOCALE;
+  
+  // Caminho limpo sem o prefixo de idioma (ex: /pt/dashboard -> /dashboard)
+  const cleanPath = localeInUrl 
+    ? `/${segments.slice(1).join('/')}` 
+    : pathname === '/' ? '/' : pathname;
+
+  // Estado de autenticação derivado do Auth.js v5
+  const isLoggedIn = !!req.auth;
+
+  // 2. EXCEÇÃO CRÍTICA PARA APIS E ESTÁTICOS
+  // Não interferimos em rotas de API para evitar quebras no Auth.js ou respostas 302 em chamadas JSON
+  if (pathname.startsWith('/api')) {
+    return NextResponse.next();
+  }
+
+  // 3. MAPEAMENTO DE ROTAS
+  // Adicionamos a home '/' como pública para evitar expulsar usuários não logados da landing page
+  const PUBLIC_ROUTES = ['/', '/login', '/auth/error', '/auth/verify'];
+  const PROTECTED_PREFIXES = ['/dashboard', '/profile', '/settings'];
+
+  const isPublicRoute = PUBLIC_ROUTES.some(route => cleanPath === route || cleanPath.startsWith('/login'));
+  const isProtectedRoute = PROTECTED_PREFIXES.some(prefix => cleanPath.startsWith(prefix));
+
+  // 4. LÓGICA DE REDIRECIONAMENTO (O Coração do Middleware)
+
+  // Cenário A: Usuário logado tentando acessar página de Login
+  if (isLoggedIn && cleanPath.startsWith('/login')) {
+    const dashboardUrl = new URL(`/${currentLocale}/dashboard`, nextUrl);
+    return NextResponse.redirect(dashboardUrl);
+  }
+
+  // Cenário B: Usuário deslogado tentando acessar rota protegida
+  if (!isLoggedIn && isProtectedRoute) {
+    const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
+    
+    // Preserva a URL pretendida para redirecionar após o login bem-sucedido
+    loginUrl.searchParams.set("callbackUrl", nextUrl.href);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // 5. FINALIZAÇÃO DA REQUISIÇÃO
+  const response = NextResponse.next();
+  
+  // Injeta o locale nos headers para que Server Components possam ler facilmente
+  response.headers.set('x-locale', currentLocale);
+  
+  return response;
 });
 
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-  display: 'swap',
-});
-
 /**
- * 🏗️ ROOT LAYOUT (SERVER COMPONENT)
- * Mantemos como Server Component para buscar a sessão via 'auth()' antes do render.
+ * ⚙️ MATCHER CONFIG
+ * Define quais caminhos o middleware deve observar.
  */
-export default async function RootLayout({ 
-  children 
-}: { 
-  children: ReactNode 
-}) {
-  // Busca a sessão no servidor para evitar "flicker" de UI no cliente
-  const session = await auth();
-
-  return (
-    <html lang="pt" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-gray-950 text-gray-100`}>
-        
-        {/* 🛡️ SESSION PROVIDER (CLIENT WRAPPER)
-          Passamos a session vinda do servidor para hidratar o cliente imediatamente.
-          refetchInterval: Resolve o deslogue automático revalidando a cada 5 min.
-        */}
-        <SessionProvider 
-          session={session}
-          refetchInterval={5 * 60} 
-          refetchOnWindowFocus={true}
-        >
-          {/* Header global disponível em todas as rotas */}
-          <Header />
-          
-          <main className="pt-20 min-h-[calc(100vh-64px)] relative">
-            {/* ⏳ BOUNDARY DE SUSPENSE
-              Protege o carregamento de componentes filhos que usam hooks como useSearchParams.
-            */}
-            <Suspense fallback={<LoadingFallback />}>
-              {children}
-            </Suspense>
-          </main>
-        </SessionProvider>
-
-      </body>
-    </html>
-  );
-}
-
-/**
- * ✨ COMPONENTE DE LOADING (CLEAN CODE)
- * Extraído para manter o layout principal limpo e legível.
- */
-function LoadingFallback() {
-  return (
-    <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      <p className="text-gray-400 animate-pulse">Carregando conteúdo...</p>
-    </div>
-  );
-}
+export const config = {
+  matcher: [
+    /*
+     * Matcher otimizado para Next.js 15:
+     * - Ignora arquivos estáticos (_next/static, _next/image)
+     * - Ignora arquivos na pasta public (favicon, imagens, etc)
+     * - Monitora todas as outras rotas
+     */
+    '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};

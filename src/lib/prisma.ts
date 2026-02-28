@@ -1,29 +1,33 @@
-// lib/prisma.ts
 import { PrismaClient } from '@prisma/client';
 
-// Variável global para evitar múltiplas instâncias do Prisma no Next.js
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+/**
+ * 💡 PADRÃO SINGLETON
+ * No Next.js (Node.js), o 'global' persiste entre recarregamentos.
+ * Isso impede que cada "Save" no código abra uma nova conexão com o Supabase.
+ */
 
-// Instanciando o PrismaClient apontando para o Supabase
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+const prismaClientSingleton = () => {
+  return new PrismaClient({
     datasources: {
       db: {
-        url: process.env.DATABASE_URL, // ✅ URL atualizada no .env
+        url: process.env.DATABASE_URL,
       },
     },
-    log:
-      process.env.NODE_ENV === 'development'
-        ? ['query', 'warn', 'error'] // Mostra queries no desenvolvimento
-        : ['warn', 'error'],          // Apenas avisos e erros na produção
+    log: process.env.NODE_ENV === 'development' 
+      ? ['query', 'error', 'warn'] 
+      : ['error'],
   });
+};
 
-// Evita múltiplas instâncias durante hot reload no desenvolvimento
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+// Tipagem global para evitar o erro de 'any' no globalThis
+declare global {
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
 }
 
+const prisma = globalThis.prisma ?? prismaClientSingleton();
+
 export default prisma;
+
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma;
+}
