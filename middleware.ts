@@ -98,12 +98,20 @@ export default auth((req: NextRequest & { auth: any }) => {
 export const config = {
   matcher: [
     /*
-     * Protege explicitamente as rotas que começam com o locale e nossas rotas protegidas.
-     * Isso evita que o middleware rode em requisições desnecessárias.
+     * 1. Captura todas as rotas que começam com nossos idiomas suportados
      */
-    '/(pt|en|es)/dashboard/:path*',
-    '/(pt|en|es)/profile/:path*',
-    '/(pt|en|es)/settings/:path*',
-    '/dashboard/:path*', // Caso acesse sem locale
+    '/(pt|en|es)/:path*',
+
+    /*
+     * 2. Captura as rotas padrão caso o usuário acesse sem o prefixo
+     */
+    '/dashboard/:path*',
+    '/profile/:path*',
+    '/settings/:path*',
+
+    /*
+     * 3. ESSENCIAL: Permite que o NextAuth gerencie a sessão e o refresh
+     */
+    '/api/auth/:path*',
   ],
 };

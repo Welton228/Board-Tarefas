@@ -82,9 +82,10 @@ export const authOptions: NextAuthOptions = {
       }
 
       // Verifica se o token ainda é válido
-      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
-        return token;
-      }
+      // Dá uma folga de 30 segundos (30000ms)
+      if (token.accessTokenExpires && Date.now() < (token.accessTokenExpires - 30000)) {
+      return token;
+}
 
       // Token expirado - tenta renovar
       return await refreshAccessToken(token);
