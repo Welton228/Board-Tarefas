@@ -2,16 +2,15 @@
 export const runtime = "nodejs";
 
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } from "react";
-import { useSession } from "next-auth/react"; // Removido signOut daqui para evitar uso acidental
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSession, signOut } from "next-auth/react"; // Unificado o import
+import { useRouter } from "next/navigation";
 import Head from "next/head";
 import CreateTaskForm from "@/createTaskUi/page";
 import TaskForm from "../../taskForm/page";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";
-import { signOut } from "next-auth/react";
 
-// --- INTERFACES ---
+// --- INTERFACES (Mantidas) ---
 interface Task {
   id: string;
   title: string;
@@ -27,7 +26,7 @@ interface Notification {
   id: string;
 }
 
-// --- COMPONENTES AUXILIARES ---
+// --- COMPONENTES AUXILIARES (Design Preservado) ---
 const TaskItem = React.memo(({ 
   task, 
   onToggle, 
@@ -90,7 +89,7 @@ TaskItem.displayName = 'TaskItem';
 
 // --- CONTEÚDO DO DASHBOARD ---
 const DashboardContent = () => {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession(); // Adicionado 'update' para re-sincronizar sessão
   const router = useRouter();
   
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -102,19 +101,22 @@ const DashboardContent = () => {
   const isMounted = useRef(true);
   const controllerRef = useRef<AbortController>();
 
-  // Notificações limpas
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
     setNotifications((prev) => [...prev, { message, type, id }]);
-    setTimeout(() => setNotifications((prev) => prev.filter((n) => n.id !== id)), 4000);
+    setTimeout(() => {
+        if (isMounted.current) setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4000);
   }, []);
 
   /**
-   * 🛠️ BUSCA DE TAREFAS (CORRIGIDA)
-   * Removido o signOut automático. Se der 401, apenas registramos no console.
-   * O NextAuth tentará o refresh do token automaticamente via SessionProvider global.
+   * 🛠️ BUSCA DE TAREFAS OTIMIZADA
+   * No Next.js 15, se a API retornar 401, forçamos um 'update' silencioso do session
+   * em vez de deslogar o usuário.
    */
   const fetchTasks = useCallback(async () => {
+    if (status !== "authenticated") return;
+    
     if (controllerRef.current) controllerRef.current.abort();
     setLoading(true);
     
@@ -126,8 +128,10 @@ const DashboardContent = () => {
         signal: controllerRef.current.signal,
       });
 
+      // Se a API diz que não estamos autorizados, mas o cliente acha que sim:
       if (response.status === 401) {
-        console.warn("Sessão em processo de renovação...");
+        console.warn("Conflito de sessão detectado. Tentando re-sincronizar...");
+        await update(); // Força o NextAuth a verificar o cookie de novo
         return; 
       }
 
@@ -136,13 +140,15 @@ const DashboardContent = () => {
       const data = await response.json();
       if (isMounted.current) setTasks(data);
     } catch (error: any) {
-      if (error.name !== 'AbortError') showNotification("Erro ao carregar lista", 'error');
+      if (error.name !== 'AbortError' && isMounted.current) {
+        showNotification("Sua sessão pode estar expirando. Recarregue a página.", 'error');
+      }
     } finally {
       if (isMounted.current) setLoading(false);
     }
-  }, [showNotification]);
+  }, [status, update, showNotification]);
 
-  // CRUD Otimizado (Removido signOut de todos os blocos)
+  // CRUD (Mantido conforme solicitado)
   const createTask = useCallback(async (taskData: { title: string; description: string }) => {
     try {
       const response = await fetch("/api/tasks", {
@@ -190,14 +196,13 @@ const DashboardContent = () => {
   }, [showNotification]);
 
   // --- EFEITOS DE CONTROLE ---
-  
   useEffect(() => {
-    if (status === "authenticated") fetchTasks();
+    isMounted.current = true;
+    if (status === "authenticated") {
+        fetchTasks();
+    }
+    return () => { isMounted.current = false; };
   }, [status, fetchTasks]);
-
-  /** * 🛡️ REMOVIDO: useEffect que forçava router.push para o login.
-   * O Middleware agora é o único responsável por isso, evitando "expulsões" por falso-positivo.
-   */
 
   const [pendingTasks, completedTasks] = useMemo(() => [
     tasks.filter(t => !t.completed),
@@ -213,7 +218,6 @@ const DashboardContent = () => {
         <title>Nexus Task | Dashboard</title>
       </Head>
 
-      {/* BACKGROUND PARTICLES - Preservado conforme seu design */}
       <div className="fixed inset-0 overflow-hidden opacity-20 pointer-events-none">
         {[...Array(10)].map((_, i) => (
           <div key={i} className="absolute w-1 h-1 bg-blue-400 rounded-full animate-pulse" 
@@ -239,10 +243,10 @@ const DashboardContent = () => {
 
       <main className="pt-28 pb-10 px-6 max-w-7xl mx-auto relative z-10">
         <section className="bg-gray-800/50 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden border border-gray-700/50 mb-8 p-6">
-           <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-             <FiPlus className="text-blue-400" /> Criar Nova Tarefa
-           </h2>
-           <CreateTaskForm onTaskCreated={createTask} />
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+              <FiPlus className="text-blue-400" /> Criar Nova Tarefa
+            </h2>
+            <CreateTaskForm onTaskCreated={createTask} />
         </section>
 
         <LayoutGroup>
@@ -272,7 +276,6 @@ const DashboardContent = () => {
         </LayoutGroup>
       </main>
 
-      {/* MODAL EDIT - Design preservado */}
       <AnimatePresence>
         {editingTask && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -285,7 +288,6 @@ const DashboardContent = () => {
         )}
       </AnimatePresence>
 
-      {/* NOTIFICAÇÕES */}
       <div className="fixed top-4 right-4 z-50 space-y-3">
         <AnimatePresence>
           {notifications.map(n => (

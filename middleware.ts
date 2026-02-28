@@ -2,116 +2,74 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-/**
- * CONFIGURAÇÕES DE LOCALIZAÇÃO E ROTAS
- * Centralizamos os caminhos para facilitar a manutenção futura.
- */
 const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
-type Locale = typeof SUPPORTED_LOCALES[number];
-const DEFAULT_LOCALE: Locale = 'pt';
-
-const ROUTES = {
-  public: ['/login', '/auth/error', '/auth/verify'],
-  protected: ['/dashboard', '/profile', '/settings'],
-  apiPrefix: '/api'
-};
+const DEFAULT_LOCALE = 'pt';
 
 /**
- * UTILS - FUNÇÕES AUXILIARES
- */
-
-// Identifica o locale presente na URL
-function getLocale(pathname: string): Locale {
-  const firstSegment = pathname.split('/')[1];
-  return SUPPORTED_LOCALES.includes(firstSegment as Locale) 
-    ? (firstSegment as Locale) 
-    : DEFAULT_LOCALE;
-}
-
-// Limpa o locale da URL para facilitar a comparação com o mapeamento de rotas
-function getCleanPath(pathname: string): string {
-  const segments = pathname.split('/').filter(Boolean);
-  if (SUPPORTED_LOCALES.includes(segments[0] as Locale)) {
-    return `/${segments.slice(1).join('/')}`;
-  }
-  return pathname === '/' ? '/' : pathname;
-}
-
-/**
- * MIDDLEWARE PRINCIPAL
- * O wrapper auth() injeta automaticamente a sessão no objeto 'req.auth'.
- * Tipamos 'req' para garantir que o TypeScript reconheça a propriedade 'auth'.
+ * 🛡️ MIDDLEWARE PRINCIPAL
  */
 export default auth((req: NextRequest & { auth: any }) => {
   const { nextUrl } = req;
-  const pathname = nextUrl.pathname;
+  const { pathname } = nextUrl;
   
-  // 1. Extração de estado e metadados
-  const locale = getLocale(pathname);
-  const cleanPath = getCleanPath(pathname);
-  const isLoggedIn = !!req.auth; // Verifica se existe uma sessão válida
+  // 1. Identificação do Locale e Path Limpo
+  const segments = pathname.split('/').filter(Boolean);
+  const localeInUrl = SUPPORTED_LOCALES.includes(segments[0] as any) ? segments[0] : null;
+  const currentLocale = localeInUrl || DEFAULT_LOCALE;
+  
+  // Remove o locale do path para comparação (ex: /pt/dashboard -> /dashboard)
+  const cleanPath = localeInUrl 
+    ? `/${segments.slice(1).join('/')}` 
+    : pathname;
 
-  // 2. Classificação da Rota Atual
-  const isApiRoute = pathname.startsWith(ROUTES.apiPrefix);
-  const isPublicRoute = ROUTES.public.some(route => cleanPath.startsWith(route));
-  const isProtectedRoute = ROUTES.protected.some(route => cleanPath.startsWith(route));
+  const isLoggedIn = !!req.auth;
 
-  /**
-   * 3. LÓGICA DE CONTROLE DE ACESSO (GUARDS)
-   */
-
-  // Regra 1: APIs não devem ser redirecionadas pelo middleware.
-  // Deixamos que o próprio arquivo da API retorne 401 JSON se necessário.
-  if (isApiRoute) {
+  // 2. EXCEÇÃO CRÍTICA: Ignorar TODAS as rotas de API
+  // O Auth.js v5 gerencia internamente /api/auth. 
+  // Outras APIs devem responder 401 via código, não redirecionar para /login.
+  if (pathname.startsWith('/api')) {
     return NextResponse.next();
   }
 
-  // Regra 2: Se o usuário estiver LOGADO e tentar acessar rotas de login/públicas,
-  // nós o enviamos diretamente para o dashboard.
+  // 3. Definição de Rotas
+  const isPublicRoute = ['/login', '/auth/error', '/auth/verify'].some(route => cleanPath.startsWith(route));
+  const isProtectedRoute = ['/dashboard', '/profile', '/settings'].some(route => cleanPath.startsWith(route));
+
+  // 4. LÓGICA DE REDIRECIONAMENTO
+
+  // Regra A: Se estiver logado e tentar ir para Login, vai para o Dashboard
   if (isLoggedIn && isPublicRoute) {
-    return NextResponse.redirect(new URL(`/${locale}/dashboard`, nextUrl));
+    return NextResponse.redirect(new URL(`/${currentLocale}/dashboard`, nextUrl));
   }
 
-  // Regra 3: Se o usuário NÃO estiver logado e tentar acessar uma rota protegida,
-  // redirecionamos para o login salvando a URL de destino (callbackUrl).
+  // Regra B: Se NÃO estiver logado e for rota protegida, vai para Login
   if (!isLoggedIn && isProtectedRoute) {
-    const loginUrl = new URL(`/${locale}/login`, nextUrl);
+    const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
+    // Evita loop de redirecionamento salvando a URL original
     loginUrl.searchParams.set("callbackUrl", nextUrl.href);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Regra 4: Para todas as outras rotas (como a Landing Page), apenas prosseguimos.
+  // 5. Adição de Headers e Prosseguimento
   const response = NextResponse.next();
+  response.headers.set('x-locale', currentLocale);
   
-  // Adição de Headers de segurança e contexto de idioma
-  response.headers.set('x-locale', locale);
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('X-Frame-Options', 'DENY');
-
   return response;
 });
 
 /**
- * MATCHER - FILTRO DE EXECUÇÃO
- * Define quais caminhos o middleware deve ignorar para economizar recursos.
+ * MATCHER ATUALIZADO
+ * No Next.js 15, o matcher deve ser o mais limpo possível.
  */
 export const config = {
   matcher: [
     /*
-     * 1. Captura todas as rotas que começam com nossos idiomas suportados
+     * Captura tudo exceto:
+     * - api (deixamos passar para não quebrar o Auth.js)
+     * - _next/static (arquivos estáticos)
+     * - _next/image (otimização de imagens)
+     * - favicon.ico e arquivos públicos (png, jpg, etc)
      */
-    '/(pt|en|es)/:path*',
-
-    /*
-     * 2. Captura as rotas padrão caso o usuário acesse sem o prefixo
-     */
-    '/dashboard/:path*',
-    '/profile/:path*',
-    '/settings/:path*',
-
-    /*
-     * 3. ESSENCIAL: Permite que o NextAuth gerencie a sessão e o refresh
-     */
-    '/api/auth/:path*',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)',
   ],
 };
