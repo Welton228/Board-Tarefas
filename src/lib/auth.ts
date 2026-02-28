@@ -4,7 +4,6 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import type { JWT } from "next-auth/jwt";
 
-// --- CONSTANTES DE AMBIENTE ---
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -13,7 +12,6 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
 }
 
 /**
- * 🔄 LÓGICA DE RENOVAÇÃO DE TOKEN (Refresh Token)
  * Tenta obter um novo Access Token do Google usando o Refresh Token.
  */
 async function refreshAccessToken(token: JWT): Promise<JWT> {
@@ -35,9 +33,7 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
     return {
       ...token,
       accessToken: refreshedTokens.access_token,
-      // Define a nova expiração (em milissegundos)
       accessTokenExpires: Date.now() + refreshedTokens.expires_in * 1000,
-      // O Google pode ou não enviar um novo refresh_token
       refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
     };
   } catch (error) {
@@ -46,17 +42,17 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
   }
 }
 
-/**
- * 🛡️ CONFIGURAÇÃO PRINCIPAL DO AUTH.JS
- */
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  // 1. ADAPTER: Mantemos ativo para persistir o usuário, mas a sessão será JWT para evitar quedas.
-  adapter: PrismaAdapter(prisma),
+  /**
+   * 1. ISOLAMENTO DO ADAPTER (O SEGREDO)
+   * Deixamos o adapter comentado por enquanto. Isso faz o sistema parar de 
+   * depender do banco de dados (PostgreSQL) para validar sua sessão a cada segundo.
+   */
+  // adapter: PrismaAdapter(prisma),
 
-  // 2. ESTRATÉGIA DE SESSÃO: Usamos JWT para máxima estabilidade na Vercel.
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 dias
+    maxAge: 30 * 24 * 60 * 60, // 30 dias de persistência
   },
 
   providers: [
@@ -66,7 +62,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       authorization: {
         params: {
           prompt: "consent",
-          access_type: "offline", // Essencial para receber o refresh_token
+          access_type: "offline",
           response_type: "code",
         },
       },
@@ -74,12 +70,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    /**
-     * 🔑 CALLBACK JWT
-     * Executado sempre que um token é criado ou verificado.
-     */
     async jwt({ token, account, user }) {
-      // Login inicial: popula o token com dados do provedor
+      // Login inicial
       if (account && user) {
         return {
           ...token,
@@ -90,41 +82,39 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         };
       }
 
-      // Verifica se o token ainda é válido (com folga de 60 segundos)
+      /**
+       * 2. FOLGA NO TOKEN
+       * Ajustei a verificação para 30 segundos (mais estável para evitar 
+       * disparos excessivos de renovação).
+       */
       const now = Date.now();
-      const shouldRefresh = now > (token.accessTokenExpires as number) - 60 * 1000;
+      const shouldRefresh = now > (token.accessTokenExpires as number) - 30 * 1000;
 
       if (!shouldRefresh) {
         return token;
       }
 
-      // Token expirou, tenta renovar
       return refreshAccessToken(token);
     },
 
-    /**
-     * 👥 CALLBACK SESSION
-     * Disponibiliza os dados do JWT para o Front-end (useSession).
-     */
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        // @ts-ignore: Adiciona o erro ao objeto de sessão para o front-end tratar
+        // @ts-ignore
         session.error = token.error;
       }
       return session;
     },
   },
 
-  // 3. PÁGINAS CUSTOMIZADAS
   pages: {
     signIn: "/login",
     error: "/auth/error",
   },
 
-  // 4. SEGURANÇA
+  /**
+   * 3. SEGURANÇA E AMBIENTE
+   * Garante que o sistema confie no host da Vercel através do AUTH_SECRET.
+   */
   secret: process.env.AUTH_SECRET,
-  
-  // Nota: Removi a configuração manual de cookies. O Auth.js v5 gerencia 
-  // automaticamente os nomes (__Secure-) com base no protocolo (HTTP/HTTPS).
 });
