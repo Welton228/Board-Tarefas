@@ -3,7 +3,6 @@ import GoogleProvider from "next-auth/providers/google";
 
 /**
  * 🔄 FUNÇÃO DE REFRESH TOKEN
- * Evita o deslogue automático renovando o acesso com o Google.
  */
 async function refreshAccessToken(token: any) {
   try {
@@ -34,23 +33,31 @@ async function refreshAccessToken(token: any) {
 }
 
 /**
- * 🚀 EXPORTAÇÃO CENTRALIZADA
- * Este é o único arquivo que você precisará para autenticação.
+ * ⚙️ CONFIGURAÇÃO (Inferred Type)
+ * Removi o 'NextAuthConfig' explícito para evitar o erro de 'no exported member'.
  */
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
+const authOptions = {
+  trustHost: true,
+  basePath: "/api/auth", 
+  session: { 
+    strategy: "jwt" as const, // O 'as const' ajuda o TS a entender a estratégia
+    maxAge: 30 * 24 * 60 * 60 
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
-        params: { prompt: "consent", access_type: "offline", response_type: "code" },
+        params: { 
+          prompt: "consent", 
+          access_type: "offline", 
+          response_type: "code" 
+        },
       },
     }),
   ],
   callbacks: {
     async jwt({ token, account, user }: any) {
-      // Login Inicial
       if (account && user) {
         return {
           ...token,
@@ -61,20 +68,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       }
 
-      // Regra da folga de 30 segundos
-      const shouldRefresh = Date.now() > (token.accessTokenExpires as number) - 30 * 1000;
+      const now = Date.now();
+      const expirationTime = (token.accessTokenExpires as number) || 0;
+      const shouldRefresh = now > expirationTime - 30 * 1000;
+
       if (!shouldRefresh) return token;
 
       return refreshAccessToken(token);
     },
     async session({ session, token }: any) {
       if (token && session.user) {
-        session.user.id = token.id;
-        session.error = token.error;
+        (session.user as any).id = token.id;
+        (session as any).error = token.error;
       }
       return session;
     },
   },
   secret: process.env.AUTH_SECRET,
   pages: { signIn: "/login" },
-});
+};
+
+// 🚀 EXPORTAÇÃO EXECUTÁVEL
+const authData = NextAuth(authOptions);
+
+export const handlers = authData.handlers;
+export const auth = authData.auth;
+export const signIn = authData.signIn;
+export const signOut = authData.signOut;

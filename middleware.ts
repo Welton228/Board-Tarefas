@@ -6,70 +6,78 @@ const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
 const DEFAULT_LOCALE = 'pt';
 
 /**
- * 🛡️ MIDDLEWARE PRINCIPAL
+ * 🛡️ MIDDLEWARE (Next.js 15)
  */
-export default auth((req: NextRequest & { auth: any }) => {
+export default async function middleware(req: NextRequest) {
   const { nextUrl } = req;
   const { pathname } = nextUrl;
   
-  // 1. Identificação do Locale e Path Limpo
+  // 1. GESTÃO DE LOCALIZAÇÃO (Locale)
   const segments = pathname.split('/').filter(Boolean);
   const localeInUrl = SUPPORTED_LOCALES.includes(segments[0] as any) ? segments[0] : null;
   const currentLocale = localeInUrl || DEFAULT_LOCALE;
   
-  // Remove o locale do path para comparação (ex: /pt/dashboard -> /dashboard)
   const cleanPath = localeInUrl 
     ? `/${segments.slice(1).join('/')}` 
     : pathname;
 
-  const isLoggedIn = !!req.auth;
-
-  // 2. EXCEÇÃO CRÍTICA: Ignorar TODAS as rotas de API
-  // O Auth.js v5 gerencia internamente /api/auth. 
-  // Outras APIs devem responder 401 via código, não redirecionar para /login.
-  if (pathname.startsWith('/api')) {
+  // 2. EXCEÇÃO CRÍTICA (Evita o erro de build no /_not-found)
+  // Ignora APIs, arquivos estáticos do Next e arquivos na pasta public
+  if (
+    pathname.startsWith('/api') || 
+    pathname.startsWith('/_next') || 
+    pathname.includes('.') // Pula arquivos como favicon.ico, logo.png, etc.
+  ) {
     return NextResponse.next();
   }
 
-  // 3. Definição de Rotas
-  const isPublicRoute = ['/login', '/auth/error', '/auth/verify'].some(route => cleanPath.startsWith(route));
-  const isProtectedRoute = ['/dashboard', '/profile', '/settings'].some(route => cleanPath.startsWith(route));
+  // 3. OBTENÇÃO DA SESSÃO PROTEGIDA
+  // Envolvemos em try/catch para que o erro s.j2 não trave o build estático
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    session = null;
+  }
+  const isLoggedIn = !!session;
 
-  // 4. LÓGICA DE REDIRECIONAMENTO
+  // 4. MAPEAMENTO DE ROTAS
+  const PUBLIC_ROUTES = ['/', '/login', '/auth/error', '/auth/verify'];
+  const PROTECTED_PREFIXES = ['/dashboard', '/profile', '/settings'];
 
-  // Regra A: Se estiver logado e tentar ir para Login, vai para o Dashboard
-  if (isLoggedIn && isPublicRoute) {
+  const isPublicRoute = PUBLIC_ROUTES.some(route => cleanPath === route);
+  const isProtectedRoute = PROTECTED_PREFIXES.some(prefix => cleanPath.startsWith(prefix));
+
+  // 5. LÓGICA DE REDIRECIONAMENTO (O Coração do Sistema)
+
+  // Caso: Logado tentando acessar Login
+  if (isLoggedIn && cleanPath === '/login') {
     return NextResponse.redirect(new URL(`/${currentLocale}/dashboard`, nextUrl));
   }
 
-  // Regra B: Se NÃO estiver logado e for rota protegida, vai para Login
+  // Caso: Deslogado tentando acessar Rota Protegida
   if (!isLoggedIn && isProtectedRoute) {
     const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
-    // Evita loop de redirecionamento salvando a URL original
+    // Salva a URL para onde o usuário queria ir
     loginUrl.searchParams.set("callbackUrl", nextUrl.href);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Adição de Headers e Prosseguimento
+  // 6. FINALIZAÇÃO E INJEÇÃO DE LOCALE
   const response = NextResponse.next();
   response.headers.set('x-locale', currentLocale);
   
   return response;
-});
+}
 
 /**
- * MATCHER ATUALIZADO
- * No Next.js 15, o matcher deve ser o mais limpo possível.
+ * ⚙️ MATCHER OTIMIZADO
  */
 export const config = {
   matcher: [
     /*
-     * Captura tudo exceto:
-     * - api (deixamos passar para não quebrar o Auth.js)
-     * - _next/static (arquivos estáticos)
-     * - _next/image (otimização de imagens)
-     * - favicon.ico e arquivos públicos (png, jpg, etc)
+     * Matcher para capturar rotas de páginas e ignorar o resto
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
   ],
 };

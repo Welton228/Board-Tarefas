@@ -5,63 +5,46 @@ import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { LogIn, LogOut, ArrowLeft, LayoutDashboard, Loader2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
-/**
- * ✅ HEADER PRINCIPAL - REVISADO NEXT.JS 15
- * - Estabilidade de sessão aprimorada
- * - Lógica de redirecionamento simplificada
- * - Feedback visual de carregamento
- */
 const Header: React.FC = () => {
+  // 🛡️ No Next.js 15, o status 'loading' ajuda a evitar hidratação incorreta
   const { data: session, status } = useSession();
   const [scrolled, setScrolled] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingAction, setIsLoadingAction] = useState(false);
   const router = useRouter();
 
-  /**
-   * 🔐 LOGIN COM GOOGLE
-   * Simplificado para evitar conflitos de callback no Next.js 15
-   */
   const handleLogin = useCallback(async () => {
-    if (isLoading) return;
-    setIsLoading(true);
+    if (isLoadingAction) return;
+    setIsLoadingAction(true);
     try {
-      // O callbackUrl deve ser apenas o path, o NextAuth resolve o domínio
+      // Importante: use o nome do provider exatamente como no auth.ts
       await signIn("google", { callbackUrl: "/dashboard" });
     } catch (err) {
-      console.error("[HEADER_LOGIN_ERROR]:", err);
-      setIsLoading(false); // Só volta o loading se der erro, senão o redirect cuida
+      console.error("[LOGIN_ERROR]:", err);
+      setIsLoadingAction(false);
     }
-  }, [isLoading]);
+  }, [isLoadingAction]);
 
-  /**
-   * 🔐 LOGOUT
-   * Força a limpeza completa do estado local
-   */
   const handleLogout = useCallback(async () => {
-    if (isLoading) return;
-    setIsLoading(true);
+    if (isLoadingAction) return;
+    setIsLoadingAction(true);
     try {
       await signOut({ callbackUrl: "/" });
     } catch (err) {
-      console.error("[HEADER_LOGOUT_ERROR]:", err);
-      setIsLoading(false);
+      console.error("[LOGOUT_ERROR]:", err);
+      setIsLoadingAction(false);
     }
-  }, [isLoading]);
+  }, [isLoadingAction]);
 
-  // Efeito de Scroll (Performance: passive listener)
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const getInitial = (name?: string | null) => 
-    name?.trim() ? name.trim().charAt(0).toUpperCase() : "U";
-
-  // Estilos base para evitar repetição (DRY - Don't Repeat Yourself)
-  const btnClass = "relative flex items-center justify-center gap-2 text-white font-medium py-2 px-4 sm:px-5 rounded-xl transition-all duration-300 shadow-lg";
+  // Helpers de estilo (DRY)
+  const btnClass = "relative flex items-center justify-center gap-2 text-white font-medium py-2 px-4 sm:px-5 rounded-xl transition-all duration-300 shadow-lg disabled:opacity-50";
 
   return (
     <motion.header
@@ -74,7 +57,6 @@ const Header: React.FC = () => {
       }`}
     >
       <section className="w-full max-w-7xl flex items-center justify-between">
-        {/* Lado Esquerdo: Navegação */}
         <div className="flex items-center gap-4 sm:gap-6">
           <Link href="/" className="group flex items-center gap-2 no-underline">
             <div className="p-2 rounded-full bg-blue-600/10 group-hover:bg-blue-600/30 transition-all">
@@ -94,21 +76,24 @@ const Header: React.FC = () => {
           )}
         </div>
 
-        {/* Lado Direito: Status de Sessão */}
         <div className="flex items-center gap-3">
-          {status === "loading" || isLoading ? (
+          {/* 🔄 Unificamos os estados de carregamento */}
+          {status === "loading" || isLoadingAction ? (
             <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
           ) : session ? (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 bg-gray-800/50 p-1 pr-3 rounded-full border border-gray-700">
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
-                  {getInitial(session.user?.name)}
+                  {session.user?.name?.charAt(0).toUpperCase() || "U"}
                 </div>
-                <span className="text-sm text-gray-200 hidden md:inline">{session.user?.name?.split(' ')[0]}</span>
+                <span className="text-sm text-gray-200 hidden md:inline">
+                  {session.user?.name?.split(' ')[0]}
+                </span>
               </div>
               
               <button
                 onClick={handleLogout}
+                disabled={isLoadingAction}
                 className={`${btnClass} bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30`}
               >
                 <LogOut className="w-4 h-4" />
@@ -118,6 +103,7 @@ const Header: React.FC = () => {
           ) : (
             <button
               onClick={handleLogin}
+              disabled={isLoadingAction}
               className={`${btnClass} bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/30`}
             >
               <LogIn className="w-4 h-4" />

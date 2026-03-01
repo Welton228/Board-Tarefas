@@ -1,84 +1,89 @@
-import { auth } from "@/src/auth"; // ✅ Importação correta do executor auth
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { ReactNode, Suspense } from "react";
+import localFont from "next/font/local";
+import { SessionProvider } from "next-auth/react";
 
-// Configurações de Internacionalização (Locales)
-const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
-const DEFAULT_LOCALE = 'pt';
+// Importações centrais
+import { auth } from "@/src/auth"; // 💡 Use o alias @ para caminhos mais limpos
+import Header from "../components/header/header"; // ✅ Importe o componente final, não a 'page'
+import "./globals.css";
 
 /**
- * 🛡️ MIDDLEWARE DE AUTENTICAÇÃO E LOCALIZAÇÃO
- * Utiliza a função auth() como wrapper para ter acesso à sessão em tempo real.
+ * 🚀 NEXT.JS 15 - CONFIGURAÇÃO DINÂMICA
+ * Como o Layout consome a sessão (auth) e o SessionProvider, ele deve ser dinâmico.
  */
-export default auth((req: NextRequest & { auth: any }) => {
-  const { nextUrl } = req;
-  const { pathname } = nextUrl;
-  
-  // 1. GESTÃO DE LOCALIZAÇÃO (Locale)
-  const segments = pathname.split('/').filter(Boolean);
-  const localeInUrl = SUPPORTED_LOCALES.includes(segments[0] as any) ? segments[0] : null;
-  const currentLocale = localeInUrl || DEFAULT_LOCALE;
-  
-  // Caminho limpo sem o prefixo de idioma (ex: /pt/dashboard -> /dashboard)
-  const cleanPath = localeInUrl 
-    ? `/${segments.slice(1).join('/')}` 
-    : pathname === '/' ? '/' : pathname;
+export const dynamic = "force-dynamic";
 
-  // Estado de autenticação derivado do Auth.js v5
-  const isLoggedIn = !!req.auth;
-
-  // 2. EXCEÇÃO CRÍTICA PARA APIS E ESTÁTICOS
-  // Não interferimos em rotas de API para evitar quebras no Auth.js ou respostas 302 em chamadas JSON
-  if (pathname.startsWith('/api')) {
-    return NextResponse.next();
-  }
-
-  // 3. MAPEAMENTO DE ROTAS
-  // Adicionamos a home '/' como pública para evitar expulsar usuários não logados da landing page
-  const PUBLIC_ROUTES = ['/', '/login', '/auth/error', '/auth/verify'];
-  const PROTECTED_PREFIXES = ['/dashboard', '/profile', '/settings'];
-
-  const isPublicRoute = PUBLIC_ROUTES.some(route => cleanPath === route || cleanPath.startsWith('/login'));
-  const isProtectedRoute = PROTECTED_PREFIXES.some(prefix => cleanPath.startsWith(prefix));
-
-  // 4. LÓGICA DE REDIRECIONAMENTO (O Coração do Middleware)
-
-  // Cenário A: Usuário logado tentando acessar página de Login
-  if (isLoggedIn && cleanPath.startsWith('/login')) {
-    const dashboardUrl = new URL(`/${currentLocale}/dashboard`, nextUrl);
-    return NextResponse.redirect(dashboardUrl);
-  }
-
-  // Cenário B: Usuário deslogado tentando acessar rota protegida
-  if (!isLoggedIn && isProtectedRoute) {
-    const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
-    
-    // Preserva a URL pretendida para redirecionar após o login bem-sucedido
-    loginUrl.searchParams.set("callbackUrl", nextUrl.href);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // 5. FINALIZAÇÃO DA REQUISIÇÃO
-  const response = NextResponse.next();
-  
-  // Injeta o locale nos headers para que Server Components possam ler facilmente
-  response.headers.set('x-locale', currentLocale);
-  
-  return response;
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+  weight: "100 900",
+  display: 'swap',
 });
 
-/**
- * ⚙️ MATCHER CONFIG
- * Define quais caminhos o middleware deve observar.
- */
-export const config = {
-  matcher: [
-    /*
-     * Matcher otimizado para Next.js 15:
-     * - Ignora arquivos estáticos (_next/static, _next/image)
-     * - Ignora arquivos na pasta public (favicon, imagens, etc)
-     * - Monitora todas as outras rotas
-     */
-    '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
-};
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
+  variable: "--font-geist-mono",
+  weight: "100 900",
+  display: 'swap',
+});
+
+export default async function RootLayout({ 
+  children 
+}: { 
+  children: ReactNode 
+}) {
+  /**
+   * 🛡️ ESTRATÉGIA ANTI-DESLOGUE (Vercel)
+   * Buscamos a session no servidor e passamos para o Provider.
+   * O wrap em try/catch evita que o build quebre se o banco estiver offline.
+   */
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    console.error("[AUTH_LAYOUT_ERROR]:", error);
+  }
+
+  return (
+    <html lang="pt" suppressHydrationWarning>
+      <body className={`
+        ${geistSans.variable} 
+        ${geistMono.variable} 
+        font-sans antialiased 
+        bg-gray-950 text-gray-100 min-h-screen
+      `}>
+        
+        {/* 🔐 SESSION PROVIDER
+            refetchInterval: 5 min - Mantém o cookie de sessão ativo na Vercel.
+            refetchOnWindowFocus: true - Revalida o login quando o usuário volta à aba.
+        */}
+        <SessionProvider 
+          session={session}
+          refetchInterval={5 * 60} 
+          refetchOnWindowFocus={true}
+        >
+          {/* O Header deve estar fora do <main> para ser fixo e consistente */}
+          <Header />
+          
+          <main className="relative pt-20 min-h-screen">
+            <Suspense fallback={<LoadingFallback />}>
+              {children}
+            </Suspense>
+          </main>
+        </SessionProvider>
+
+      </body>
+    </html>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-blue-500 border-r-transparent"></div>
+      <p className="text-blue-300/60 text-sm font-medium animate-pulse">
+        Sincronizando...
+      </p>
+    </div>
+  );
+}
