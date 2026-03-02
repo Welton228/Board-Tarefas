@@ -1,4 +1,4 @@
-import { auth } from "@/src/auth"; // Certifique-se de usar o caminho do arquivo simplificado que criamos
+import { auth } from "@/src/auth"; 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -10,9 +10,9 @@ const DEFAULT_LOCALE = 'pt';
 const PROTECTED_PREFIXES = ['/dashboard', '/profile', '/settings'];
 
 /**
- * 🛡️ MIDDLEWARE PROTEGIDO
+ * 🛡️ MIDDLEWARE PROTEGIDO (Auth.js v5)
  */
-export default auth((req: NextRequest & { auth?: any }) => {
+export default auth((req) => {
   const { nextUrl } = req;
   const pathname = nextUrl.pathname;
 
@@ -26,7 +26,7 @@ export default auth((req: NextRequest & { auth?: any }) => {
   const cleanPath = localeInUrl ? `/${segments.slice(1).join('/')}` : pathname;
 
   // 2. ESTADO DE AUTENTICAÇÃO
-  // O objeto 'req.auth' vem preenchido pelo wrapper do Auth.js v5
+  // Na v5, usamos o próprio 'req.auth' que o wrapper fornece
   const isLoggedIn = !!req.auth;
 
   // 3. MAPEAMENTO DE ROTAS
@@ -34,22 +34,23 @@ export default auth((req: NextRequest & { auth?: any }) => {
   const isLoginPage = cleanPath === '/login';
 
   /**
-   * 4. LÓGICA DE REDIRECIONAMENTO (Early Returns)
+   * 4. LÓGICA DE REDIRECIONAMENTO (Clean Code)
    */
 
-  // Caso: Logado tentando ir para Login -> Vai para Dashboard
+  // Caso: Logado na página de Login -> Vai para Dashboard
   if (isLoggedIn && isLoginPage) {
     return NextResponse.redirect(new URL(`/${currentLocale}/dashboard`, nextUrl));
   }
 
-  // Caso: Deslogado tentando acessar área protegida -> Vai para Login
+  // Caso: Deslogado em área protegida -> Vai para Login
   if (!isLoggedIn && isProtectedRoute) {
     const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
+    // Preserva a URL que o usuário tentou acessar para redirecionar após o login
     loginUrl.searchParams.set("callbackUrl", nextUrl.href);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. FINALIZAÇÃO: Configuração de Headers
+  // 5. FINALIZAÇÃO: Configuração de Headers e Locale
   const response = NextResponse.next();
   response.headers.set('x-locale', currentLocale);
   
@@ -61,7 +62,7 @@ export default auth((req: NextRequest & { auth?: any }) => {
  */
 export const config = {
   matcher: [
-    // Ignora arquivos internos, estáticos e extensões comuns (png, jpg, etc)
+    // Foca apenas em páginas, ignorando arquivos estáticos e rotas de API internas
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
   ],
 };
