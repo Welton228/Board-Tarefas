@@ -2,11 +2,19 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
 /**
- * 🔄 FUNÇÃO DE REFRESH TOKEN
+ * Constantes de configuração para melhor legibilidade (Clean Code)
+ */
+const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
+const TOKEN_REFRESH_BUFFER_MS = 60 * 1000; // 60 segundos de folga para evitar deslogue precoce
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+/**
+ * 🔄 RENOVAÇÃO DE TOKEN (Refresh Token Flow)
+ * Responsável por solicitar um novo access_token ao Google usando o refresh_token.
  */
 async function refreshAccessToken(token: any) {
   try {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
+    const response = await fetch(GOOGLE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -18,46 +26,58 @@ async function refreshAccessToken(token: any) {
     });
 
     const refreshedTokens = await response.json();
-    if (!response.ok) throw refreshedTokens;
+
+    if (!response.ok) {
+      throw refreshedTokens;
+    }
 
     return {
       ...token,
       accessToken: refreshedTokens.access_token,
+      // Calcula nova expiração baseada no tempo atual + segundos retornados pelo Google
       accessTokenExpires: Date.now() + refreshedTokens.expires_in * 1000,
+      // O Google nem sempre envia um novo refresh_token, então mantemos o antigo se necessário
       refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
     };
   } catch (error) {
-    console.error("Erro ao renovar token:", error);
-    return { ...token, error: "RefreshAccessTokenError" };
+    console.error("Erro crítico ao renovar access token:", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    };
   }
 }
 
 /**
- * ⚙️ CONFIGURAÇÃO (Inferred Type)
- * Removi o 'NextAuthConfig' explícito para evitar o erro de 'no exported member'.
+ * ⚙️ CONFIGURAÇÃO CENTRAL DO NEXTAUTH
  */
-const authOptions = {
+export const authOptions = {
+  // Melhora compatibilidade com proxies e Vercel
   trustHost: true,
-  basePath: "/api/auth", 
-  session: { 
-    strategy: "jwt" as const, // O 'as const' ajuda o TS a entender a estratégia
-    maxAge: 30 * 24 * 60 * 60 
+  basePath: "/api/auth",
+  
+  session: {
+    strategy: "jwt" as const, // JWT é a estratégia atual (não grava na tabela Session)
+    maxAge: THIRTY_DAYS_IN_SECONDS,
   },
+
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
-        params: { 
-          prompt: "consent", 
-          access_type: "offline", 
-          response_type: "code" 
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
         },
       },
     }),
   ],
+
   callbacks: {
     async jwt({ token, account, user }: any) {
+      // Login inicial: persiste os dados do provedor no token
       if (account && user) {
         return {
           ...token,
@@ -68,30 +88,44 @@ const authOptions = {
         };
       }
 
+      // Verificação de expiração para renovação automática
       const now = Date.now();
       const expirationTime = (token.accessTokenExpires as number) || 0;
-      const shouldRefresh = now > expirationTime - 30 * 1000;
 
-      if (!shouldRefresh) return token;
+      // Se não houver tempo de expiração, não tenta refresh para evitar erros
+      if (expirationTime === 0) return token;
 
+      // Verifica se o token está prestes a expirar (com margem de segurança)
+      const isTokenExpired = now > expirationTime - TOKEN_REFRESH_BUFFER_MS;
+
+      if (!isTokenExpired) {
+        return token;
+      }
+
+      // Se expirou, tenta renovar usando o refresh_token do Google
       return refreshAccessToken(token);
     },
+
     async session({ session, token }: any) {
       if (token && session.user) {
-        (session.user as any).id = token.id;
-        (session as any).error = token.error;
+        // Injeta o ID do usuário e possíveis erros de renovação na sessão
+        session.user.id = token.id;
+        session.error = token.error;
       }
       return session;
     },
   },
+
   secret: process.env.AUTH_SECRET,
-  pages: { signIn: "/login" },
+  
+  pages: {
+    signIn: "/login",
+  },
 };
 
-// 🚀 EXPORTAÇÃO EXECUTÁVEL
+/**
+ * 🚀 EXPORTAÇÃO DOS HANDLERS E MÉTODOS AUXILIARES
+ */
 const authData = NextAuth(authOptions);
 
-export const handlers = authData.handlers;
-export const auth = authData.auth;
-export const signIn = authData.signIn;
-export const signOut = authData.signOut;
+export const { handlers, auth, signIn, signOut } = authData;
