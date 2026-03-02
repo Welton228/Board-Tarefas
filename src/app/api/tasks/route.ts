@@ -1,32 +1,64 @@
+/**
+ * ⚙️ CONFIGURAÇÕES DE RUNTIME
+ * force-dynamic: Garante que o Next.js não tente gerar essa rota como estática no build.
+ */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "../../../lib/prisma";
-import { auth } from "../../../../src/auth";
+import prisma from "../../../lib/prisma"; // Recomendado usar aliases (@/)
+import { auth } from "@/src/auth";
 
 /**
- * POST - Criar nova tarefa
+ * 🟢 GET - Buscar todas as tarefas do usuário logado
+ */
+export async function GET(_req: NextRequest) {
+  try {
+    const session = await auth();
+
+    // Verificação robusta de sessão
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Sessão inválida ou expirada" }, 
+        { status: 401 }
+      );
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json(tasks);
+
+  } catch (error: any) {
+    console.error("[API_TASKS_GET]:", error.message);
+    return NextResponse.json(
+      { error: "Erro ao buscar tarefas" }, 
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * 🔵 POST - Criar uma nova tarefa
  */
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
 
-    // Log de depuração para o seu painel Vercel
-    if (!session) {
-      console.error("[API_POST] Sessão não encontrada. Usuário deslogado.");
-      return NextResponse.json({ error: "Sessão expirada" }, { status: 401 });
-    }
-
-    const userId = session.user?.id;
-    if (!userId) {
-      console.error("[API_POST] ID do usuário ausente na sessão.");
-      return NextResponse.json({ error: "Usuário não identificado" }, { status: 401 });
+    if (!session?.user?.id) {
+      console.warn("[API_TASKS_POST]: Tentativa de criação sem sessão ativa.");
+      return NextResponse.json(
+        { error: "Não autorizado" }, 
+        { status: 401 }
+      );
     }
 
     const body = await req.json();
     const { title, description } = body;
 
+    // Validação de campos obrigatórios (Clean Code: Early Return)
     if (!title?.trim() || !description?.trim()) {
       return NextResponse.json(
         { error: "Título e descrição são obrigatórios" },
@@ -39,46 +71,25 @@ export async function POST(req: NextRequest) {
         title: title.trim(),
         description: description.trim(),
         completed: false,
-        userId,
+        userId: session.user.id,
       },
     });
 
     return NextResponse.json(task, { status: 201 });
 
   } catch (error: any) {
-    console.error("Erro crítico ao criar tarefa:", error.message);
-    return NextResponse.json(
-      { error: "Erro interno ao processar tarefa" },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * GET - Buscar tarefas
- * No Next.js 15, passamos o 'req' mesmo que não usado para evitar cache agressivo.
- */
-export async function GET(req: NextRequest) {
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      // Retornamos 401 de forma limpa. O Dashboard agora sabe lidar com isso 
-      // sem deslogar imediatamente graças ao ajuste que fizemos no arquivo anterior.
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    console.error("[API_TASKS_POST]:", error.message);
+    
+    // Tratamento específico para erros do Prisma
+    if (error.code === 'P2002') {
+      return NextResponse.json(
+        { error: "Já existe uma tarefa com este título" }, 
+        { status: 400 }
+      );
     }
 
-    const tasks = await prisma.task.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return NextResponse.json(tasks, { status: 200 });
-
-  } catch (error: any) {
-    console.error("Erro ao buscar tarefas no Postgres:", error.message);
     return NextResponse.json(
-      { error: "Falha na conexão com o banco de dados" },
+      { error: "Erro interno ao salvar tarefa" }, 
       { status: 500 }
     );
   }

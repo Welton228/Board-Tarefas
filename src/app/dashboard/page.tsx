@@ -1,16 +1,24 @@
 'use client';
+
+/**
+ * 🛠️ NOTA TÉCNICA (Next.js 15): 
+ * Forçamos a runtime nodejs e garantimos que o componente não tente ser 
+ * pré-renderizado estaticamente sem uma sessão ativa, evitando erros de Build.
+ */
 export const runtime = "nodejs";
 
 import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } from "react";
-import { useSession, signOut } from "next-auth/react"; // Unificado o import
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
-import CreateTaskForm from "../../createTaskUi/page";
-import TaskForm from "../../taskForm/page";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";
 
-// --- INTERFACES (Mantidas) ---
+// Importações de componentes de UI (Certifique-se que os caminhos estão corretos)
+import CreateTaskForm from "../../createTaskUi/page";
+import TaskForm from "../../taskForm/page";
+
+// --- INTERFACES ---
 interface Task {
   id: string;
   title: string;
@@ -27,6 +35,11 @@ interface Notification {
 }
 
 // --- COMPONENTES AUXILIARES (Design Preservado) ---
+
+/**
+ * TaskItem: Componente memorizado para evitar re-renderizações desnecessárias.
+ * Corrigido: Atributos de acessibilidade e tipos de botão.
+ */
 const TaskItem = React.memo(({ 
   task, 
   onToggle, 
@@ -49,6 +62,8 @@ const TaskItem = React.memo(({
     <div className="bg-gradient-to-r from-gray-700/50 to-gray-800/50 p-1 rounded-xl">
       <div className="bg-gray-800/90 p-4 flex flex-col md:flex-row md:items-center gap-4 rounded-xl">
         <motion.button
+          type="button"
+          aria-label={task.completed ? "Marcar como pendente" : "Concluir tarefa"}
           whileTap={{ scale: 0.9 }}
           onClick={() => onToggle(task.id, task.completed)}
           className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
@@ -74,10 +89,20 @@ const TaskItem = React.memo(({
         </div>
 
         <div className="flex gap-2">
-          <button onClick={() => onEdit(task)} className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg text-blue-400 transition-colors">
+          <button 
+            type="button"
+            aria-label="Editar tarefa"
+            onClick={() => onEdit(task)} 
+            className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg text-blue-400 transition-colors"
+          >
             <FiEdit2 />
           </button>
-          <button onClick={() => onDelete(task.id)} className="p-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-red-400 transition-colors">
+          <button 
+            type="button"
+            aria-label="Excluir tarefa"
+            onClick={() => onDelete(task.id)} 
+            className="p-2 bg-red-600/20 hover:bg-red-600/30 rounded-lg text-red-400 transition-colors"
+          >
             <FiTrash2 />
           </button>
         </div>
@@ -87,20 +112,25 @@ const TaskItem = React.memo(({
 ));
 TaskItem.displayName = 'TaskItem';
 
-// --- CONTEÚDO DO DASHBOARD ---
+// --- CONTEÚDO PRINCIPAL ---
+
 const DashboardContent = () => {
-  const { data: session, status, update } = useSession(); // Adicionado 'update' para re-sincronizar sessão
+  // Hook de sessão atualizado para lidar com re-sincronização automática
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   
+  // Estados da Aplicação
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isHoveringHeader, setIsHoveringHeader] = useState(false);
 
+  // Refs de controle
   const isMounted = useRef(true);
   const controllerRef = useRef<AbortController>();
 
+  // Notificações com Clean Code
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
     setNotifications((prev) => [...prev, { message, type, id }]);
@@ -110,9 +140,8 @@ const DashboardContent = () => {
   }, []);
 
   /**
-   * 🛠️ BUSCA DE TAREFAS OTIMIZADA
-   * No Next.js 15, se a API retornar 401, forçamos um 'update' silencioso do session
-   * em vez de deslogar o usuário.
+   * 📡 BUSCA DE TAREFAS (Com tratamento para o erro de logout)
+   * Se a API retornar 401, tentamos 'update()' para renovar o JWT antes de desistir.
    */
   const fetchTasks = useCallback(async () => {
     if (status !== "authenticated") return;
@@ -128,27 +157,27 @@ const DashboardContent = () => {
         signal: controllerRef.current.signal,
       });
 
-      // Se a API diz que não estamos autorizados, mas o cliente acha que sim:
       if (response.status === 401) {
-        console.warn("Conflito de sessão detectado. Tentando re-sincronizar...");
-        await update(); // Força o NextAuth a verificar o cookie de novo
+        // Tenta recuperar a sessão silenciosamente antes de deslogar
+        const newSession = await update();
+        if (!newSession) router.push('/login');
         return; 
       }
 
-      if (!response.ok) throw new Error("Erro ao buscar tarefas");
+      if (!response.ok) throw new Error("Erro de conexão");
 
       const data = await response.json();
       if (isMounted.current) setTasks(data);
     } catch (error: any) {
       if (error.name !== 'AbortError' && isMounted.current) {
-        showNotification("Sua sessão pode estar expirando. Recarregue a página.", 'error');
+        showNotification("Sincronizando dados...", 'error');
       }
     } finally {
       if (isMounted.current) setLoading(false);
     }
-  }, [status, update, showNotification]);
+  }, [status, update, router, showNotification]);
 
-  // CRUD (Mantido conforme solicitado)
+  // CRUD Actions
   const createTask = useCallback(async (taskData: { title: string; description: string }) => {
     try {
       const response = await fetch("/api/tasks", {
@@ -156,12 +185,12 @@ const DashboardContent = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(taskData),
       });
-      if (!response.ok) throw new Error("Falha ao criar");
+      if (!response.ok) throw new Error();
       const newTask = await response.json();
       setTasks(prev => [newTask, ...prev]);
       showNotification("Tarefa criada!", 'success');
       return newTask;
-    } catch (error: any) {
+    } catch {
       showNotification("Erro ao criar tarefa", 'error');
     }
   }, [showNotification]);
@@ -179,36 +208,36 @@ const DashboardContent = () => {
       if (!response.ok) throw new Error();
     } catch {
       setTasks(oldTasks);
-      showNotification("Erro ao atualizar", 'error');
+      showNotification("Falha na atualização", 'error');
     }
   }, [tasks, showNotification]);
 
   const deleteTask = useCallback(async (id: string) => {
-    if (!confirm("Excluir tarefa?")) return;
+    if (!confirm("Deseja excluir permanentemente?")) return;
     try {
       const response = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error();
       setTasks(prev => prev.filter(t => t.id !== id));
-      showNotification("Excluída!", 'success');
+      showNotification("Tarefa removida", 'success');
     } catch {
-      showNotification("Erro ao excluir", 'error');
+      showNotification("Erro ao remover", 'error');
     }
   }, [showNotification]);
 
-  // --- EFEITOS DE CONTROLE ---
+  // Controle de ciclo de vida
   useEffect(() => {
     isMounted.current = true;
-    if (status === "authenticated") {
-        fetchTasks();
-    }
+    if (status === "authenticated") fetchTasks();
     return () => { isMounted.current = false; };
   }, [status, fetchTasks]);
 
+  // Memoização das listas para performance
   const [pendingTasks, completedTasks] = useMemo(() => [
     tasks.filter(t => !t.completed),
     tasks.filter(t => t.completed)
   ], [tasks]);
 
+  // Renderização Condicional de Segurança
   if (status === "loading") return <LoadingScreen />;
   if (!session) return null;
 
@@ -218,7 +247,8 @@ const DashboardContent = () => {
         <title>Nexus Task | Dashboard</title>
       </Head>
 
-      <div className="fixed inset-0 overflow-hidden opacity-20 pointer-events-none">
+      {/* Background Animated Particles */}
+      <div className="fixed inset-0 overflow-hidden opacity-20 pointer-events-none" aria-hidden="true">
         {[...Array(10)].map((_, i) => (
           <div key={i} className="absolute w-1 h-1 bg-blue-400 rounded-full animate-pulse" 
                style={{ top: `${Math.random()*100}%`, left: `${Math.random()*100}%` }} />
@@ -235,7 +265,11 @@ const DashboardContent = () => {
             <h1 className="text-3xl font-bold">Nexus Task</h1>
             <p className="text-sm font-light">{session.user?.name || "Usuário"}</p>
           </motion.div>
-          <button onClick={() => signOut({ callbackUrl: "/login" })} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl shadow-lg hover:opacity-90 transition-all">
+          <button 
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })} 
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl shadow-lg hover:opacity-90 transition-all"
+          >
             <FiLogOut /> <span>Sair</span>
           </button>
         </div>
@@ -254,9 +288,15 @@ const DashboardContent = () => {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                 <FiCheck className="text-purple-400" /> Minhas Tarefas 
-                <span className="text-sm bg-gray-700 px-2 py-1 rounded-full">{tasks.length}</span>
+                <span className="text-sm bg-gray-700 px-2 py-1 rounded-full" aria-label="Total de tarefas">{tasks.length}</span>
               </h2>
-              <button onClick={fetchTasks} disabled={loading} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white">
+              <button 
+                type="button"
+                aria-label="Atualizar lista"
+                onClick={fetchTasks} 
+                disabled={loading} 
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white"
+              >
                 <FiRefreshCw className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
@@ -271,6 +311,9 @@ const DashboardContent = () => {
                   <TaskItem key={task.id} task={task} onToggle={toggleTaskCompletion} onEdit={setEditingTask} onDelete={deleteTask} />
                 ))}
               </AnimatePresence>
+              {tasks.length === 0 && !loading && (
+                <p className="text-center text-gray-500 py-10">Nenhuma tarefa encontrada.</p>
+              )}
             </div>
           </section>
         </LayoutGroup>
@@ -282,12 +325,19 @@ const DashboardContent = () => {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-gray-800 rounded-3xl p-8 w-full max-w-xl border border-gray-700">
               <h3 className="text-2xl font-bold text-white mb-6">Editar Tarefa</h3>
               <TaskForm task={editingTask} onTaskSaved={() => { setEditingTask(null); fetchTasks(); }} />
-              <button onClick={() => setEditingTask(null)} className="mt-4 w-full py-2 bg-gray-700 text-white rounded-xl">Cancelar</button>
+              <button 
+                type="button"
+                onClick={() => setEditingTask(null)} 
+                className="mt-4 w-full py-2 bg-gray-700 text-white rounded-xl"
+              >
+                Cancelar
+              </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
+      {/* Notifications Portal */}
       <div className="fixed top-4 right-4 z-50 space-y-3">
         <AnimatePresence>
           {notifications.map(n => (
@@ -303,10 +353,11 @@ const DashboardContent = () => {
 };
 
 // --- COMPONENTES DE SUPORTE ---
+
 const LoadingScreen = () => (
   <div className="flex flex-col items-center justify-center h-screen gap-4 bg-gray-950">
     <div className="w-16 h-16 border-4 border-t-transparent border-blue-500 rounded-full animate-spin" />
-    <p className="text-gray-300">Carregando Nexus Dashboard...</p>
+    <p className="text-gray-300">Sincronizando Nexus Dashboard...</p>
   </div>
 );
 

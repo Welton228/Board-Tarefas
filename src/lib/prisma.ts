@@ -1,33 +1,32 @@
 import { PrismaClient } from '@prisma/client';
 
 /**
- * 💡 PADRÃO SINGLETON
- * No Next.js (Node.js), o 'global' persiste entre recarregamentos.
- * Isso impede que cada "Save" no código abra uma nova conexão com o Supabase.
+ * 💡 PADRÃO SINGLETON REFORÇADO
+ * No Next.js, o hot-reloading cria instâncias duplicadas do PrismaClient.
+ * Este padrão garante que apenas uma conexão seja mantida no ambiente de desenvolvimento.
  */
 
 const prismaClientSingleton = () => {
   return new PrismaClient({
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
     log: process.env.NODE_ENV === 'development' 
       ? ['query', 'error', 'warn'] 
       : ['error'],
   });
 };
 
-// Tipagem global para evitar o erro de 'any' no globalThis
+// Extende o objeto global do Node.js para armazenar a instância do Prisma
+// Isso evita que o TypeScript reclame do 'global.prisma'
 declare global {
-  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
+  // eslint-disable-next-line no-var
+  var prisma: ReturnType<typeof prismaClientSingleton> | undefined;
 }
 
+// Inicializa o cliente: tenta usar o global primeiro, se não existir, cria um novo
 const prisma = globalThis.prisma ?? prismaClientSingleton();
 
 export default prisma;
 
+// Se não estivermos em produção, salvamos a instância no objeto global
 if (process.env.NODE_ENV !== 'production') {
   globalThis.prisma = prisma;
 }
