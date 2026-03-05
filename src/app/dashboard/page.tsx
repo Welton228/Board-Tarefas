@@ -2,7 +2,6 @@
 
 /**
  * 🛠️ CONFIGURAÇÕES DE RUNTIME (Next.js 15)
- * Forçamos nodejs para garantir compatibilidade com as APIs de Auth.
  */
 export const runtime = "nodejs";
 
@@ -12,9 +11,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";
 
-// Importações de componentes de UI
+// Componentes de UI (Preservados)
 import CreateTaskForm from "../../createTaskUi/page";
-import TaskForm from "../../taskForm/page";
 
 // --- INTERFACES ---
 interface Task {
@@ -33,21 +31,22 @@ interface Notification {
 
 /**
  * 🚀 DASHBOARD CONTENT
- * Design preservado, lógica de sessão blindada contra logout involuntário.
+ * Lógica de sessão blindada e conformidade com acessibilidade (axe/name-role-value).
  */
 const DashboardContent = () => {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const isMounted = useRef(true);
-  const controllerRef = useRef<AbortController>();
+  const controllerRef = useRef<AbortController | null>(null);
 
-  // Notificações limpas
+  /**
+   * 📢 SISTEMA DE NOTIFICAÇÕES
+   */
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
     setNotifications((prev) => [...prev, { message, type, id }]);
@@ -57,82 +56,77 @@ const DashboardContent = () => {
   }, []);
 
   /**
-   * 📡 BUSCA DE TAREFAS (Com proteção 401)
+   * 📡 BUSCA DE TAREFAS
    */
   const fetchTasks = useCallback(async () => {
-    // 🛡️ Prevenção: Não busca se não estiver explicitamente autenticado
     if (status !== "authenticated") return;
     
     if (controllerRef.current) controllerRef.current.abort();
+    controllerRef.current = new AbortController();
+
     setLoading(true);
     
     try {
-      controllerRef.current = new AbortController();
       const response = await fetch("/api/tasks", {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         signal: controllerRef.current.signal,
       });
 
-      // Se o token expirou (401), tentamos o silent refresh antes de deslogar
       if (response.status === 401) {
-        const newSession = await update();
-        if (!newSession && isMounted.current) router.push('/login');
+        const sessionUpdate = await update();
+        if (!sessionUpdate && isMounted.current) {
+          router.push('/login');
+        }
         return; 
       }
 
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error("Falha na API");
 
       const data = await response.json();
-      if (isMounted.current) setTasks(data);
+      if (isMounted.current) setTasks(Array.isArray(data) ? data : []);
+
     } catch (error: any) {
       if (error.name !== 'AbortError' && isMounted.current) {
-        showNotification("Erro ao sincronizar dados", 'error');
+        showNotification("Erro ao sincronizar tarefas", 'error');
       }
     } finally {
       if (isMounted.current) setLoading(false);
     }
   }, [status, update, router, showNotification]);
 
-  // Ciclo de Vida: Monitora autenticação
   useEffect(() => {
     isMounted.current = true;
-    if (status === "authenticated") {
-      fetchTasks();
-    } else if (status === "unauthenticated") {
-      router.push("/login");
-    }
-    return () => { isMounted.current = false; };
+    if (status === "authenticated") fetchTasks();
+    else if (status === "unauthenticated") router.push("/login");
+
+    return () => { 
+      isMounted.current = false;
+      if (controllerRef.current) controllerRef.current.abort();
+    };
   }, [status, fetchTasks, router]);
 
-  // Memoização das listas (Performance)
-  const [pendingTasks, completedTasks] = useMemo(() => [
-    tasks.filter(t => !t.completed),
-    tasks.filter(t => t.completed)
-  ], [tasks]);
-
-  // --- RENDERIZAÇÃO DE SEGURANÇA ---
   if (status === "loading") return <LoadingScreen />;
   if (!session) return null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
-      {/* HEADER: Design Preservado */}
       <header className="fixed top-0 left-0 right-0 bg-gray-800/30 backdrop-blur-lg z-40 border-b border-gray-700/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
               Nexus Task
             </h1>
-            <p className="text-sm text-gray-400">{session.user?.name}</p>
+            <p className="text-sm text-gray-400">{session.user?.email}</p>
           </div>
           <button 
             type="button"
-            aria-label="Sair do sistema"
+            aria-label="Sair da conta"
+            title="Sair da conta"
             onClick={() => signOut({ callbackUrl: "/login" })} 
             className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-xl hover:bg-red-600/30 transition-all"
           >
-            <FiLogOut /> <span>Sair</span>
+            <FiLogOut aria-hidden="true" /> <span>Sair</span>
           </button>
         </div>
       </header>
@@ -140,7 +134,7 @@ const DashboardContent = () => {
       <main className="pt-28 pb-10 px-6 max-w-7xl mx-auto relative z-10">
         <section className="bg-gray-800/50 backdrop-blur-md rounded-2xl p-6 border border-gray-700/50 mb-8">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-            <FiPlus className="text-blue-400" /> Criar Tarefa
+            <FiPlus className="text-blue-400" aria-hidden="true" /> Criar Tarefa
           </h2>
           <CreateTaskForm onTaskCreated={fetchTasks} />
         </section>
@@ -149,41 +143,64 @@ const DashboardContent = () => {
           <section className="bg-gray-800/50 backdrop-blur-md rounded-2xl p-6 border border-gray-700/50">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold flex items-center gap-2">
-                <FiCheck className="text-purple-400" /> Minhas Tarefas 
+                <FiCheck className="text-purple-400" aria-hidden="true" /> Minhas Tarefas 
               </h2>
               <button 
                 type="button"
-                aria-label="Recarregar tarefas"
+                aria-label="Recarregar lista de tarefas"
+                title="Recarregar tarefas"
                 onClick={fetchTasks} 
                 disabled={loading} 
-                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600"
+                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600 transition-colors"
               >
-                <FiRefreshCw className={loading ? 'animate-spin' : ''} />
+                <FiRefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
               </button>
             </div>
 
             <div className="space-y-3">
               <AnimatePresence mode='popLayout'>
-                {tasks.map(task => (
-                  <motion.div 
-                    layout
-                    key={task.id}
-                    className="bg-gray-800/90 p-4 rounded-xl flex items-center justify-between border border-gray-700"
-                  >
-                    <span className={task.completed ? "line-through text-gray-500" : ""}>{task.title}</span>
-                    <div className="flex gap-2">
-                      <button type="button" aria-label="Editar" className="p-2 text-blue-400"><FiEdit2 /></button>
-                      <button type="button" aria-label="Remover" className="p-2 text-red-400"><FiTrash2 /></button>
-                    </div>
-                  </motion.div>
-                ))}
+                {tasks.length > 0 ? (
+                  tasks.map(task => (
+                    <motion.div 
+                      layout
+                      key={task.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="bg-gray-800/90 p-4 rounded-xl flex items-center justify-between border border-gray-700 hover:border-gray-500 transition-all"
+                    >
+                      <span className={task.completed ? "line-through text-gray-500" : ""}>
+                        {task.title}
+                      </span>
+                      <div className="flex gap-2">
+                        <button 
+                          type="button"
+                          aria-label={`Editar tarefa: ${task.title}`}
+                          title="Editar tarefa"
+                          className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg"
+                        >
+                          <FiEdit2 aria-hidden="true" />
+                        </button>
+                        <button 
+                          type="button"
+                          aria-label={`Excluir tarefa: ${task.title}`}
+                          title="Excluir tarefa"
+                          className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
+                        >
+                          <FiTrash2 aria-hidden="true" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <p className="text-center text-gray-500 py-10">Nenhuma tarefa encontrada.</p>
+                )}
               </AnimatePresence>
             </div>
           </section>
         </LayoutGroup>
       </main>
 
-      {/* Portal de Notificações */}
       <div className="fixed top-4 right-4 z-50 space-y-3">
         <AnimatePresence>
           {notifications.map(n => (
@@ -206,7 +223,7 @@ const DashboardContent = () => {
 const LoadingScreen = () => (
   <div className="flex flex-col items-center justify-center h-screen bg-gray-950">
     <div className="w-12 h-12 border-4 border-t-transparent border-blue-500 rounded-full animate-spin" />
-    <p className="mt-4 text-gray-400">Autenticando sessão...</p>
+    <p className="mt-4 text-gray-400 font-medium">Sincronizando Nexus...</p>
   </div>
 );
 
