@@ -2,7 +2,8 @@
  * ⚙️ CONFIGURAÇÕES DE RUNTIME
  * force-dynamic: Garante que o Next.js não tente gerar essa rota como estática no build.
  */
-export const runtime = "nodejs";
+// export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
