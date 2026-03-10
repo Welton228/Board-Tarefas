@@ -1,117 +1,85 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, ArrowLeft, LayoutDashboard, Loader2 } from "lucide-react";
+import { LogIn, LogOut, LayoutDashboard, Loader2, ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
 const Header: React.FC = () => {
-  // 🛡️ No Next.js 15, o status 'loading' ajuda a evitar hidratação incorreta
   const { data: session, status } = useSession();
-  const [scrolled, setScrolled] = useState(false);
-  const [isLoadingAction, setIsLoadingAction] = useState(false);
+  const [isPending, setIsPending] = useState(false);
   const router = useRouter();
 
-  const handleLogin = useCallback(async () => {
-    if (isLoadingAction) return;
-    setIsLoadingAction(true);
+  const executeAuthAction = useCallback(async (action: () => Promise<any>) => {
+    setIsPending(true);
     try {
-      // Importante: use o nome do provider exatamente como no auth.ts
-      await signIn("google", { callbackUrl: "/dashboard" });
-    } catch (err) {
-      console.error("[LOGIN_ERROR]:", err);
-      setIsLoadingAction(false);
+      await action();
+    } catch (error) {
+      console.error("Auth Action Error:", error);
+    } finally {
+      setIsPending(false);
     }
-  }, [isLoadingAction]);
-
-  const handleLogout = useCallback(async () => {
-    if (isLoadingAction) return;
-    setIsLoadingAction(true);
-    try {
-      await signOut({ callbackUrl: "/" });
-    } catch (err) {
-      console.error("[LOGOUT_ERROR]:", err);
-      setIsLoadingAction(false);
-    }
-  }, [isLoadingAction]);
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Helpers de estilo (DRY)
-  const btnClass = "relative flex items-center justify-center gap-2 text-white font-medium py-2 px-4 sm:px-5 rounded-xl transition-all duration-300 shadow-lg disabled:opacity-50";
+  const isLoading = status === "loading" || isPending;
 
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`fixed top-0 w-full h-20 z-50 flex justify-center items-center px-4 transition-all duration-500 ${
-        scrolled 
-          ? "bg-gray-900/80 backdrop-blur-xl border-b border-blue-500/20" 
-          : "bg-transparent"
-      }`}
+    <motion.header 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }}
+      className="fixed top-0 w-full h-20 z-50 flex justify-center items-center px-4 bg-gray-900/80 backdrop-blur-md border-b border-white/10"
     >
-      <section className="w-full max-w-7xl flex items-center justify-between">
-        <div className="flex items-center gap-4 sm:gap-6">
-          <Link href="/" className="group flex items-center gap-2 no-underline">
-            <div className="p-2 rounded-full bg-blue-600/10 group-hover:bg-blue-600/30 transition-all">
-              <ArrowLeft className="text-blue-400 w-5 h-5 group-hover:text-white" />
-            </div>
-            <span className="text-blue-100 font-medium hidden sm:block group-hover:text-white">Início</span>
-          </Link>
+      <div className="w-full max-w-7xl flex justify-between items-center">
+        {/* ✅ Link com texto discernível para acessibilidade */}
+        <Link 
+          href="/" 
+          className="flex items-center gap-2 text-blue-400 hover:text-white transition-colors"
+          aria-label="Voltar para a página inicial"
+        >
+          <ArrowLeft size={20} aria-hidden="true" />
+          <span>Início</span>
+        </Link>
 
-          {session && (
-            <button
-              onClick={() => router.push("/dashboard")}
-              className={`${btnClass} bg-blue-600 hover:bg-blue-500 border border-blue-400/30`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span className="hidden sm:inline">Painel</span>
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* 🔄 Unificamos os estados de carregamento */}
-          {status === "loading" || isLoadingAction ? (
-            <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+        <div className="flex items-center gap-4">
+          {isLoading ? (
+            <Loader2 className="animate-spin text-blue-500" aria-label="Carregando..." />
           ) : session ? (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-gray-800/50 p-1 pr-3 rounded-full border border-gray-700">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
-                  {session.user?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <span className="text-sm text-gray-200 hidden md:inline">
-                  {session.user?.name?.split(' ')[0]}
-                </span>
-              </div>
-              
-              <button
-                onClick={handleLogout}
-                disabled={isLoadingAction}
-                className={`${btnClass} bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30`}
+            <>
+              <button 
+                onClick={() => router.push("/dashboard")}
+                className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-700 transition-all"
+                title="Ir para o Painel de Controle"
+                aria-label="Ir para o Dashboard"
               >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Sair</span>
+                <LayoutDashboard size={18} aria-hidden="true" />
+                <span className="hidden sm:inline">Painel</span>
               </button>
-            </div>
+              
+              {/* ✅ CORREÇÃO CRÍTICA: Botão de ícone agora tem label e title */}
+              <button 
+                onClick={() => executeAuthAction(() => signOut({ callbackUrl: "/" }))}
+                className="text-red-400 hover:text-red-500 transition-colors p-2"
+                title="Sair da conta"
+                aria-label="Sair do sistema"
+              >
+                <LogOut size={20} aria-hidden="true" />
+              </button>
+            </>
           ) : (
-            <button
-              onClick={handleLogin}
-              disabled={isLoadingAction}
-              className={`${btnClass} bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/30`}
+            <button 
+              onClick={() => executeAuthAction(() => signIn("google", { callbackUrl: "/dashboard" }))}
+              className="flex items-center gap-2 bg-emerald-600 px-4 py-2 rounded-lg hover:bg-emerald-700 transition-all"
+              title="Acessar com Google"
+              aria-label="Entrar no sistema com conta Google"
             >
-              <LogIn className="w-4 h-4" />
+              <LogIn size={18} aria-hidden="true" />
               <span>Acessar</span>
             </button>
           )}
         </div>
-      </section>
+      </div>
     </motion.header>
   );
 };
