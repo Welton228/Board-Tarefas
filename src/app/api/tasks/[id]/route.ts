@@ -1,15 +1,17 @@
 /**
- * ✅ MELHORIA 1: Removido o runtime "nodejs" para evitar conflito com o Middleware (Edge).
- * ✅ MELHORIA 2: Adicionado force-dynamic para garantir leitura de sessão em tempo real.
+ * ⚙️ CONFIGURAÇÕES DE RUNTIME
+ * IMPORTANTE: Fixamos 'nodejs' pois o Prisma Client nativo não roda no Edge Runtime.
+ * 'force-dynamic' garante que a sessão seja validada a cada requisição.
  */
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma'; // Utilizando alias para consistência
-import { auth } from '@/src/auth';   // Importando da mesma instância do Middleware
+import prisma from '../../../../lib/prisma'; 
+import { auth } from '@/src/auth';
 
 /**
- * 🔵 PUT - Atualizar tarefa
+ * 🔵 PUT - Atualizar uma tarefa existente
  */
 export async function PUT(
   req: NextRequest, 
@@ -19,34 +21,36 @@ export async function PUT(
     const { id } = await params;
     const session = await auth();
     
-    // Se o auth() falha aqui em produção, o problema era o conflito de runtime
+    // 1. Validação de Autenticação
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 });
+      return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 });
     }
 
+    // 2. Validação do ID (Prisma usa Int ou String dependendo do seu schema)
+    // Se no seu schema o ID for String (UUID/CUID), remova o parseInt.
     const taskId = parseInt(id, 10);
     if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+      return NextResponse.json({ error: 'Formato de ID inválido' }, { status: 400 });
     }
 
     const body = await req.json();
     const { title, description, completed } = body;
 
-    // Busca a tarefa para verificar propriedade
+    // 3. Verificação de Propriedade (Segurança)
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: { userId: true }
     });
 
     if (!task) {
-      return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+      return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 });
     }
 
     if (task.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      return NextResponse.json({ error: 'Acesso negado: você não é o dono desta tarefa' }, { status: 403 });
     }
 
-    // Atualização com Clean Code (Objeto dinâmico)
+    // 4. Atualização Atômica
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
       data: {
@@ -56,15 +60,16 @@ export async function PUT(
       }
     });
 
-    return NextResponse.json(updatedTask);
+    return NextResponse.json(updatedTask, { status: 200 });
+
   } catch (error: any) {
     console.error('[TASK_UPDATE_ERROR]:', error.message);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno ao atualizar tarefa' }, { status: 500 });
   }
 }
 
 /**
- * 🔴 DELETE - Excluir tarefa
+ * 🔴 DELETE - Excluir uma tarefa
  */
 export async function DELETE(
   req: NextRequest, 
@@ -83,22 +88,29 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
+    // 1. Busca para verificar se a tarefa pertence ao usuário antes de deletar
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: { userId: true }
     });
 
-    if (!task || task.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Não permitido' }, { status: 404 });
+    if (!task) {
+      return NextResponse.json({ error: 'Tarefa já foi removida ou não existe' }, { status: 404 });
     }
 
+    if (task.userId !== session.user.id) {
+      return NextResponse.json({ error: 'Permissão negada para excluir esta tarefa' }, { status: 403 });
+    }
+
+    // 2. Exclusão definitiva
     await prisma.task.delete({
       where: { id: taskId }
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ message: "Tarefa excluída com sucesso" }, { status: 200 });
+
   } catch (error: any) {
     console.error('[TASK_DELETE_ERROR]:', error.message);
-    return NextResponse.json({ error: 'Erro ao excluir' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro técnico ao processar exclusão' }, { status: 500 });
   }
 }

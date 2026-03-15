@@ -1,6 +1,7 @@
 import { ReactNode, Suspense } from "react";
 import localFont from "next/font/local";
 import { SessionProvider } from "next-auth/react";
+import { Toaster } from "react-hot-toast"; // 🟢 Importação da lib de notificações
 
 import Header from "../components/header/header";
 import "./globals.css";
@@ -28,10 +29,9 @@ export default function RootLayout({
   children: ReactNode 
 }) {
   /**
-   * ✅ ESTRATÉGIA PLENO: 
-   * No Next.js 15, evitamos passar a session manualmente para o Provider no RootLayout.
-   * Isso evita o conflito de hidratação que causa o logout automático.
-   * O Provider buscará a sessão automaticamente de forma estável.
+   * ✅ ESTRATÉGIA MANTIDA: 
+   * A sessão não é passada via prop para evitar conflitos de hidratação.
+   * O Toaster foi adicionado fora do main para sobrepor toda a interface.
    */
 
   return (
@@ -43,15 +43,33 @@ export default function RootLayout({
         bg-gray-950 text-gray-100 min-h-screen
       `}>
         
-        {/* 🔐 SESSION PROVIDER OTIMIZADO
-            Removida a prop 'session={session}'.
-            Dessa forma, o hook useSession() no Dashboard não receberá um valor
-            conflitante durante a hidratação inicial.
-        */}
         <SessionProvider 
           refetchInterval={5 * 60} 
           refetchOnWindowFocus={true}
         >
+          {/* 🔔 CONFIGURAÇÃO DO TOASTER
+              As configurações abaixo garantem que as notificações 
+              sigam o design dark do seu Nexus Task.
+          */}
+          <Toaster 
+            position="bottom-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#111827', // Gray-900
+                color: '#f3f4f6',      // Gray-100
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px',
+              },
+              success: {
+                iconTheme: {
+                  primary: '#3b82f6', // Blue-500 para combinar com o tema
+                  secondary: '#fff',
+                },
+              },
+            }}
+          />
+
           <Header />
           
           <main className="relative pt-20 min-h-screen">
