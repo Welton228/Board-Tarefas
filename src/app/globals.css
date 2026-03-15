@@ -1,50 +1,54 @@
-/* =========================================================
-   IMPORTS (SEMPRE no topo do arquivo)
-   ========================================================= */
+/* ✅ CORREÇÃO 1: Mover o @import para o topo absoluto.
+  No entanto, a recomendação oficial do Next.js 15 é usar next/font/google 
+  no seu layout.tsx para evitar esse @import que pode travar o build.
+*/
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
 
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
 
 /* =========================================================
-   TAILWIND
+   ESTILOS GLOBAIS E ROOT
    ========================================================= */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-
-/* =========================================================
-   ESTILOS GLOBAIS
-   ========================================================= */
+:root {
+  --background: #030712; /* gray-950 */
+  --foreground: #f9fafb; /* gray-50 */
+}
 
 html {
   font-family: 'Roboto', sans-serif;
+  scroll-behavior: smooth;
 }
 
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
 
 /* =========================================================
-   ANIMAÇÕES
+   ANIMAÇÕES (Corrigido para evitar conflitos de renderização)
    ========================================================= */
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
+@layer utilities {
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .animate-fade-in {
+    animation: fade-in 0.6s ease-in-out forwards;
   }
 }
-
-.animate-fade-in {
-  animation: fade-in 0.6s ease-in-out;
-}
-
 
 /* =========================================================
    SCROLLBAR CUSTOMIZADA
    ========================================================= */
-
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }

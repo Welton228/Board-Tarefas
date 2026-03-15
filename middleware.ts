@@ -1,68 +1,74 @@
 import { auth } from "@/src/auth"; 
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
 /**
- * ℹ️ CONFIGURAÇÕES DE NEGÓCIO
+ * ℹ️ CONFIGURAÇÕES DE NEGÓCIO E ROTAS
+ * Centralizar as rotas aqui facilita a manutenção futura (Clean Code).
  */
 const SUPPORTED_LOCALES = ['pt', 'en', 'es'] as const;
 const DEFAULT_LOCALE = 'pt';
-const PROTECTED_PREFIXES = ['/dashboard', '/profile', '/settings'];
+
+// Adicionamos '/clientdashboard' aqui para que o Middleware saiba que deve protegê-lo
+const PROTECTED_PREFIXES = [
+  '/dashboard', 
+  '/clientdashboard', 
+  '/profile', 
+  '/settings'
+];
 
 /**
- * 🛡️ MIDDLEWARE PROTEGIDO (Auth.js v5)
+ * 🛡️ MIDDLEWARE DE AUTENTICAÇÃO (Auth.js v5)
+ * O wrapper 'auth' injeta automaticamente a sessão no objeto 'req'.
  */
 export default auth((req) => {
   const { nextUrl } = req;
   const pathname = nextUrl.pathname;
 
-  // 1. GESTÃO DE LOCALIZAÇÃO (Locale)
+  // 1. TRATAMENTO DE LOCALIZAÇÃO (i18n)
   const segments = pathname.split('/').filter(Boolean);
   const firstSegment = segments[0] as any;
   const localeInUrl = SUPPORTED_LOCALES.includes(firstSegment) ? firstSegment : null;
   const currentLocale = localeInUrl || DEFAULT_LOCALE;
 
-  // Caminho normalizado (ex: /pt/dashboard -> /dashboard)
+  // Caminho sem o prefixo de idioma (ex: /pt/clientdashboard -> /clientdashboard)
   const cleanPath = localeInUrl ? `/${segments.slice(1).join('/')}` : pathname;
 
-  // 2. ESTADO DE AUTENTICAÇÃO
-  // Na v5, usamos o próprio 'req.auth' que o wrapper fornece
+  // 2. VERIFICAÇÃO DE ESTADO
   const isLoggedIn = !!req.auth;
-
-  // 3. MAPEAMENTO DE ROTAS
   const isProtectedRoute = PROTECTED_PREFIXES.some(prefix => cleanPath.startsWith(prefix));
   const isLoginPage = cleanPath === '/login';
 
   /**
-   * 4. LÓGICA DE REDIRECIONAMENTO (Clean Code)
+   * 3. LÓGICA DE REDIRECIONAMENTO
    */
 
-  // Caso: Logado na página de Login -> Vai para Dashboard
+  // Regra: Se está logado e tenta ir para o Login, manda para o Dashboard
   if (isLoggedIn && isLoginPage) {
     return NextResponse.redirect(new URL(`/${currentLocale}/dashboard`, nextUrl));
   }
 
-  // Caso: Deslogado em área protegida -> Vai para Login
+  // Regra: Se NÃO está logado e tenta acessar área protegida, manda para Login
   if (!isLoggedIn && isProtectedRoute) {
     const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
-    // Preserva a URL que o usuário tentou acessar para redirecionar após o login
+    // Guarda a URL original para voltar para ela após o login bem-sucedido
     loginUrl.searchParams.set("callbackUrl", nextUrl.href);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. FINALIZAÇÃO: Configuração de Headers e Locale
+  // 4. CONTINUIDADE DA REQUISIÇÃO
   const response = NextResponse.next();
-  response.headers.set('x-locale', currentLocale);
+  response.headers.set('x-locale', currentLocale); // Útil para o Client Side saber o idioma
   
   return response;
 });
 
 /**
- * ⚙️ MATCHER OTIMIZADO
+ * ⚙️ MATCHER (FILTRO DE EXECUÇÃO)
+ * Define em quais rotas o Middleware deve rodar. 
+ * Ignora arquivos estáticos e de sistema para não perder performance.
  */
 export const config = {
   matcher: [
-    // Foca apenas em páginas, ignorando arquivos estáticos e rotas de API internas
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
   ],
 };

@@ -1,17 +1,11 @@
 'use client';
 
-/**
- * 🛠️ CONFIGURAÇÕES DE RUNTIME (Next.js 15)
- */
-export const runtime = "nodejs";
-
-import React, { useEffect, useState, useRef, useCallback, useMemo, Suspense } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { FiLogOut, FiRefreshCw, FiEdit2, FiTrash2, FiCheck, FiPlus } from "react-icons/fi";
 
-// Componentes de UI (Preservados)
+// Componentes internos
 import CreateTaskForm from "../../createTaskUi/page";
 
 // --- INTERFACES ---
@@ -30,12 +24,11 @@ interface Notification {
 }
 
 /**
- * 🚀 DASHBOARD CONTENT
- * Lógica de sessão blindada e conformidade com acessibilidade (axe/name-role-value).
+ * 🚀 CONTEÚDO PRINCIPAL DO DASHBOARD
  */
 const DashboardContent = () => {
+  // ✅ Na v5, o status 'authenticated' garante que o Middleware já validou a rota.
   const { data: session, status, update } = useSession();
-  const router = useRouter();
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +38,7 @@ const DashboardContent = () => {
   const controllerRef = useRef<AbortController | null>(null);
 
   /**
-   * 📢 SISTEMA DE NOTIFICAÇÕES
+   * 📢 SISTEMA DE NOTIFICAÇÕES (Feedback visual para o usuário)
    */
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
@@ -56,11 +49,12 @@ const DashboardContent = () => {
   }, []);
 
   /**
-   * 📡 BUSCA DE TAREFAS
+   * 📡 BUSCA DE TAREFAS (Com tratamento silencioso de expiração de token)
    */
   const fetchTasks = useCallback(async () => {
     if (status !== "authenticated") return;
     
+    // Aborta requisições anteriores para evitar "race conditions"
     if (controllerRef.current) controllerRef.current.abort();
     controllerRef.current = new AbortController();
 
@@ -73,15 +67,14 @@ const DashboardContent = () => {
         signal: controllerRef.current.signal,
       });
 
+      // Se a API responder 401, tentamos renovar a sessão antes de assumir logout
       if (response.status === 401) {
         const sessionUpdate = await update();
-        if (!sessionUpdate && isMounted.current) {
-          router.push('/login');
-        }
-        return; 
+        // Se após o update ainda não houver sessão, o Middleware redirecionará no próximo refresh
+        if (!sessionUpdate) return;
       }
 
-      if (!response.ok) throw new Error("Falha na API");
+      if (!response.ok) throw new Error("Falha ao buscar dados");
 
       const data = await response.json();
       if (isMounted.current) setTasks(Array.isArray(data) ? data : []);
@@ -93,24 +86,32 @@ const DashboardContent = () => {
     } finally {
       if (isMounted.current) setLoading(false);
     }
-  }, [status, update, router, showNotification]);
+  }, [status, update, showNotification]);
 
+  /**
+   * ⚙️ EFEITOS DE INICIALIZAÇÃO
+   */
   useEffect(() => {
     isMounted.current = true;
-    if (status === "authenticated") fetchTasks();
-    else if (status === "unauthenticated") router.push("/login");
-
+    if (status === "authenticated") {
+      fetchTasks();
+    }
     return () => { 
       isMounted.current = false;
       if (controllerRef.current) controllerRef.current.abort();
     };
-  }, [status, fetchTasks, router]);
+  }, [status, fetchTasks]);
 
+  // Enquanto a sessão carrega, exibimos o esqueleto ou loading
   if (status === "loading") return <LoadingScreen />;
+
+  // Se por algum motivo chegar aqui sem sessão, o Middleware cuidará do redirecionamento
   if (!session) return null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
+      
+      {/* 🔝 CABEÇALHO (Otimizado com Acessibilidade) */}
       <header className="fixed top-0 left-0 right-0 bg-gray-800/30 backdrop-blur-lg z-40 border-b border-gray-700/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
@@ -120,18 +121,22 @@ const DashboardContent = () => {
             <p className="text-sm text-gray-400">{session.user?.email}</p>
           </div>
           <button 
-            type="button"
-            aria-label="Sair da conta"
-            title="Sair da conta"
+            type="button" // ✅ Correção: Atributo 'type' definido
+            aria-label="Sair da conta" // ✅ Correção: Acessibilidade para leitores de tela
+            title="Sair da conta" // ✅ Correção: Tooltip para desktop
             onClick={() => signOut({ callbackUrl: "/login" })} 
             className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-xl hover:bg-red-600/30 transition-all"
           >
-            <FiLogOut aria-hidden="true" /> <span>Sair</span>
+            <FiLogOut aria-hidden="true" /> 
+            <span>Sair</span>
           </button>
         </div>
       </header>
 
+      {/* 📋 CONTEÚDO PRINCIPAL */}
       <main className="pt-28 pb-10 px-6 max-w-7xl mx-auto relative z-10">
+        
+        {/* SEÇÃO: CRIAR TAREFA */}
         <section className="bg-gray-800/50 backdrop-blur-md rounded-2xl p-6 border border-gray-700/50 mb-8">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
             <FiPlus className="text-blue-400" aria-hidden="true" /> Criar Tarefa
@@ -139,6 +144,7 @@ const DashboardContent = () => {
           <CreateTaskForm onTaskCreated={fetchTasks} />
         </section>
 
+        {/* SEÇÃO: LISTA DE TAREFAS */}
         <LayoutGroup>
           <section className="bg-gray-800/50 backdrop-blur-md rounded-2xl p-6 border border-gray-700/50">
             <div className="flex justify-between items-center mb-6">
@@ -146,12 +152,12 @@ const DashboardContent = () => {
                 <FiCheck className="text-purple-400" aria-hidden="true" /> Minhas Tarefas 
               </h2>
               <button 
-                type="button"
+                type="button" // ✅ Correção: Type definido
                 aria-label="Recarregar lista de tarefas"
                 title="Recarregar tarefas"
                 onClick={fetchTasks} 
                 disabled={loading} 
-                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600 transition-colors"
+                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600 transition-colors disabled:opacity-50"
               >
                 <FiRefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
               </button>
@@ -174,7 +180,7 @@ const DashboardContent = () => {
                       </span>
                       <div className="flex gap-2">
                         <button 
-                          type="button"
+                          type="button" // ✅ Correção: Type definido
                           aria-label={`Editar tarefa: ${task.title}`}
                           title="Editar tarefa"
                           className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg"
@@ -182,7 +188,7 @@ const DashboardContent = () => {
                           <FiEdit2 aria-hidden="true" />
                         </button>
                         <button 
-                          type="button"
+                          type="button" // ✅ Correção: Type definido
                           aria-label={`Excluir tarefa: ${task.title}`}
                           title="Excluir tarefa"
                           className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
@@ -201,6 +207,7 @@ const DashboardContent = () => {
         </LayoutGroup>
       </main>
 
+      {/* 🔔 NOTIFICAÇÕES FLUTUANTES */}
       <div className="fixed top-4 right-4 z-50 space-y-3">
         <AnimatePresence>
           {notifications.map(n => (
@@ -209,6 +216,7 @@ const DashboardContent = () => {
               initial={{ x: 50, opacity: 0 }} 
               animate={{ x: 0, opacity: 1 }} 
               exit={{ x: 50, opacity: 0 }} 
+              role="alert" // ✅ Melhoria: Notifica leitores de tela sobre o alerta
               className={`${n.type === 'success' ? 'bg-green-600' : 'bg-red-600'} px-6 py-4 rounded-xl shadow-xl text-white`}
             >
               {n.message}
@@ -220,13 +228,19 @@ const DashboardContent = () => {
   );
 };
 
+/**
+ * 🌀 TELA DE CARREGAMENTO
+ */
 const LoadingScreen = () => (
   <div className="flex flex-col items-center justify-center h-screen bg-gray-950">
     <div className="w-12 h-12 border-4 border-t-transparent border-blue-500 rounded-full animate-spin" />
-    <p className="mt-4 text-gray-400 font-medium">Sincronizando Nexus...</p>
+    <p className="mt-4 text-gray-400 font-medium tracking-widest">Sincronizando Nexus...</p>
   </div>
 );
 
+/**
+ * 📦 EXPORTAÇÃO PRINCIPAL COM BOUNDARY
+ */
 const ClientDashboard = () => (
   <Suspense fallback={<LoadingScreen />}>
     <DashboardContent />

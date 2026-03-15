@@ -5,24 +5,29 @@ export default {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    // Adicionei estas para garantir que ele varra as pastas de UI que você usou
+    "./createTaskUi/**/*.{js,ts,jsx,tsx,mdx}", 
   ],
   theme: {
-    screens: {
-      xs: {'max': '480px'},
-      sm: {'max': '342px'},
-    },
     extend: {
+      // ✅ MOVA os screens para dentro do extend se quiser manter os padrões,
+      // ou use nomes diferentes para não bugar os plugins de CSS.
+      screens: {
+        'xs': {'max': '480px'},
+        // 'sm' original é 640px. Mudar para 342px max pode quebrar bibliotecas de UI.
+        'mobile-sm': {'max': '342px'}, 
+      },
       padding: {
-        '18': '18px', // Adiciona o valor personalizado
+        '18': '18px',
       },
       height: {
-        '76': '76px', // Define a altura personalizada
+        '76': '76px',
       },
       maxWidth: {
-        '480px': '480px', // Define o max-width personalizado
+        '480': '480px', // Removido o 'px' do nome da chave para evitar erro de parse
       },
       fontFamily: {
-        roboto: ['Roboto', 'sans-serif'], // define a fonte personalizada
+        roboto: ['Roboto', 'sans-serif'],
       },
       colors: {
         background: "var(--background)",

@@ -1,2 +1,2 @@
-import { handlers } from "../../../../auth"; // Certifique-se que o caminho @ aponta para a raiz
+import { handlers } from "../../../../auth";
 export const { GET, POST } = handlers;

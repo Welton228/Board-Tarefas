@@ -26,9 +26,8 @@ const TaskList: React.FC<TaskListProps> = ({ initialTasks = [] }) => {
       try {
         const response = await fetch('/api/tasks');
         
-        // ✅ TRATAMENTO DE SESSÃO: Essencial para seu problema de logout
         if (response.status === 401) {
-          router.push('/login?error=SessionExpired');
+          router.push('/login');
           return;
         }
 
@@ -49,7 +48,7 @@ const TaskList: React.FC<TaskListProps> = ({ initialTasks = [] }) => {
   if (loading) {
     return (
       <div className="flex justify-center p-10 text-blue-500">
-        <FiLoader className="animate-spin text-3xl" />
+        <FiLoader className="animate-spin text-3xl" aria-label="Carregando tarefas" />
       </div>
     );
   }
@@ -60,15 +59,19 @@ const TaskList: React.FC<TaskListProps> = ({ initialTasks = [] }) => {
         Minhas Tarefas
       </h3>
       
-      <ul className="grid gap-4">
-        <AnimatePresence mode="popLayout">
-          {tasks.length > 0 ? (
-            tasks.map((task, index) => (
+      {tasks.length > 0 ? (
+        /* ✅ SOLUÇÃO: O 'component="ul"' garante que o AnimatePresence 
+           se comporte como uma <ul> e seus filhos diretos sejam apenas <li>.
+        */
+        <motion.ul className="grid gap-4">
+          <AnimatePresence mode="popLayout">
+            {tasks.map((task, index) => (
               <motion.li
                 key={task.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: index * 0.05 }}
                 className="group flex items-start gap-4 p-5 bg-gray-900/40 backdrop-blur-md border border-gray-800 rounded-2xl hover:border-blue-500/50 transition-all shadow-lg"
               >
                 <div className="mt-1 text-blue-500">
@@ -84,18 +87,15 @@ const TaskList: React.FC<TaskListProps> = ({ initialTasks = [] }) => {
                   </p>
                 </div>
               </motion.li>
-            ))
-          ) : (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-center py-20 bg-gray-900/20 rounded-3xl border-2 border-dashed border-gray-800"
-            >
-              <p className="text-gray-500">Nenhuma tarefa encontrada. Que tal criar uma agora?</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </ul>
+            ))}
+          </AnimatePresence>
+        </motion.ul>
+      ) : (
+        /* ✅ O estado vazio é uma <div> simples, totalmente fora de qualquer <ul> */
+        <div className="text-center py-20 bg-gray-900/20 rounded-3xl border-2 border-dashed border-gray-800">
+          <p className="text-gray-500">Nenhuma tarefa encontrada. Que tal criar uma agora?</p>
+        </div>
+      )}
     </div>
   );
 };

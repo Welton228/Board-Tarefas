@@ -1,7 +1,12 @@
+// -----------------------------------------------------------------------------
+// GENERATOR & DATASOURCE
+// Configurações principais do motor do Prisma e conexão com o banco
+// -----------------------------------------------------------------------------
+
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["interactiveTransactions"]
-  binaryTargets   = ["native", "rhel-openssl-1.0.x"]
+  provider      = "prisma-client-js"
+  // Adicionado suporte para versões mais recentes do OpenSSL utilizadas pela Vercel
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -9,46 +14,49 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// -----------------------------------------------------------------------------
+// AUTHENTICATION MODELS (NextAuth.js)
+// Estes modelos seguem o padrão exigido pelo Auth.js para persistência
+// -----------------------------------------------------------------------------
+
 model User {
   id            String    @id @default(cuid())
-  email         String    @unique
-  password      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
   name          String?
+  email         String    @unique
   emailVerified DateTime?
   image         String?
+  password      String?   // Opcional para quem usa apenas OAuth (Google)
+  
+  // Timestamps para auditoria
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relações
   accounts      Account[]
   sessions      Session[]
   tasks         Task[]
 }
 
-model Task {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String?
-  completed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  
+  // IMPORTANTE: @db.Text é necessário porque tokens do Google/OAuth 
+  // excedem o limite padrão de 255 caracteres do PostgreSQL.
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  id_token           String? @db.Text
+  
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  session_state      String?
+
+  // Relacionamento com usuário: se o usuário for deletado, a conta também será (Cascade)
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -67,4 +75,24 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// -----------------------------------------------------------------------------
+// BUSINESS LOGIC MODELS
+// Modelos específicos da sua regra de negócio (BoardTarefas)
+// -----------------------------------------------------------------------------
+
+model Task {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  // Chave estrangeira e relação
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Índice para melhorar a performance de buscas de tarefas por usuário
+  @@index([userId])
 }
