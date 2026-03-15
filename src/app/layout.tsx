@@ -2,15 +2,10 @@ import { ReactNode, Suspense } from "react";
 import localFont from "next/font/local";
 import { SessionProvider } from "next-auth/react";
 
-// Importações centrais
-import { auth } from "@/src/auth"; // 💡 Use o alias @ para caminhos mais limpos
-import Header from "../components/header/header"; // ✅ Importe o componente final, não a 'page'
+import Header from "../components/header/header";
 import "./globals.css";
 
-/**
- * 🚀 NEXT.JS 15 - CONFIGURAÇÃO DINÂMICA
- * Como o Layout consome a sessão (auth) e o SessionProvider, ele deve ser dinâmico.
- */
+// Força a página a ser dinâmica para garantir que os cookies sejam lidos sempre
 export const dynamic = "force-dynamic";
 
 const geistSans = localFont({
@@ -27,22 +22,17 @@ const geistMono = localFont({
   display: 'swap',
 });
 
-export default async function RootLayout({ 
+export default function RootLayout({ 
   children 
 }: { 
   children: ReactNode 
 }) {
   /**
-   * 🛡️ ESTRATÉGIA ANTI-DESLOGUE (Vercel)
-   * Buscamos a session no servidor e passamos para o Provider.
-   * O wrap em try/catch evita que o build quebre se o banco estiver offline.
+   * ✅ ESTRATÉGIA PLENO: 
+   * No Next.js 15, evitamos passar a session manualmente para o Provider no RootLayout.
+   * Isso evita o conflito de hidratação que causa o logout automático.
+   * O Provider buscará a sessão automaticamente de forma estável.
    */
-  let session = null;
-  try {
-    session = await auth();
-  } catch (error) {
-    console.error("[AUTH_LAYOUT_ERROR]:", error);
-  }
 
   return (
     <html lang="pt" suppressHydrationWarning>
@@ -53,16 +43,15 @@ export default async function RootLayout({
         bg-gray-950 text-gray-100 min-h-screen
       `}>
         
-        {/* 🔐 SESSION PROVIDER
-            refetchInterval: 5 min - Mantém o cookie de sessão ativo na Vercel.
-            refetchOnWindowFocus: true - Revalida o login quando o usuário volta à aba.
+        {/* 🔐 SESSION PROVIDER OTIMIZADO
+            Removida a prop 'session={session}'.
+            Dessa forma, o hook useSession() no Dashboard não receberá um valor
+            conflitante durante a hidratação inicial.
         */}
         <SessionProvider 
-          session={session}
           refetchInterval={5 * 60} 
           refetchOnWindowFocus={true}
         >
-          {/* O Header deve estar fora do <main> para ser fixo e consistente */}
           <Header />
           
           <main className="relative pt-20 min-h-screen">
