@@ -38,7 +38,7 @@ const DashboardContent = () => {
   const controllerRef = useRef<AbortController | null>(null);
 
   /**
-   * 📢 SISTEMA DE NOTIFICAÇÕES (Feedback visual para o usuário)
+   * 📢 SISTEMA DE NOTIFICAÇÕES
    */
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now().toString();
@@ -49,12 +49,11 @@ const DashboardContent = () => {
   }, []);
 
   /**
-   * 📡 BUSCA DE TAREFAS (Com tratamento silencioso de expiração de token)
+   * 📡 BUSCA DE TAREFAS
    */
   const fetchTasks = useCallback(async () => {
     if (status !== "authenticated") return;
     
-    // Aborta requisições anteriores para evitar "race conditions"
     if (controllerRef.current) controllerRef.current.abort();
     controllerRef.current = new AbortController();
 
@@ -67,10 +66,8 @@ const DashboardContent = () => {
         signal: controllerRef.current.signal,
       });
 
-      // Se a API responder 401, tentamos renovar a sessão antes de assumir logout
       if (response.status === 401) {
         const sessionUpdate = await update();
-        // Se após o update ainda não houver sessão, o Middleware redirecionará no próximo refresh
         if (!sessionUpdate) return;
       }
 
@@ -102,30 +99,28 @@ const DashboardContent = () => {
     };
   }, [status, fetchTasks]);
 
-  // Enquanto a sessão carrega, exibimos o esqueleto ou loading
   if (status === "loading") return <LoadingScreen />;
-
-  // Se por algum motivo chegar aqui sem sessão, o Middleware cuidará do redirecionamento
   if (!session) return null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
       
-      {/* 🔝 CABEÇALHO (Otimizado com Acessibilidade) */}
+      {/* 🔝 CABEÇALHO */}
       <header className="fixed top-0 left-0 right-0 bg-gray-800/30 backdrop-blur-lg z-40 border-b border-gray-700/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            {/* ✅ CORREÇÃO: bg-linear-to-r conforme nova sintaxe do Tailwind */}
+            <h1 className="text-3xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
               Nexus Task
             </h1>
             <p className="text-sm text-gray-400">{session.user?.email}</p>
           </div>
           <button 
-            type="button" // ✅ Correção: Atributo 'type' definido
-            aria-label="Sair da conta" // ✅ Correção: Acessibilidade para leitores de tela
-            title="Sair da conta" // ✅ Correção: Tooltip para desktop
+            type="button" 
+            aria-label="Sair da conta" 
+            title="Sair da conta" 
             onClick={() => signOut({ callbackUrl: "/login" })} 
-            className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-xl hover:bg-red-600/30 transition-all"
+            className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-400 rounded-xl hover:bg-red-600/30 transition-all cursor-pointer"
           >
             <FiLogOut aria-hidden="true" /> 
             <span>Sair</span>
@@ -152,12 +147,12 @@ const DashboardContent = () => {
                 <FiCheck className="text-purple-400" aria-hidden="true" /> Minhas Tarefas 
               </h2>
               <button 
-                type="button" // ✅ Correção: Type definido
+                type="button" 
                 aria-label="Recarregar lista de tarefas"
                 title="Recarregar tarefas"
                 onClick={fetchTasks} 
                 disabled={loading} 
-                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600 transition-colors disabled:opacity-50"
+                className="p-2 bg-gray-700 rounded-lg text-white hover:bg-gray-600 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <FiRefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
               </button>
@@ -180,18 +175,18 @@ const DashboardContent = () => {
                       </span>
                       <div className="flex gap-2">
                         <button 
-                          type="button" // ✅ Correção: Type definido
+                          type="button" 
                           aria-label={`Editar tarefa: ${task.title}`}
                           title="Editar tarefa"
-                          className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg"
+                          className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg cursor-pointer"
                         >
                           <FiEdit2 aria-hidden="true" />
                         </button>
                         <button 
-                          type="button" // ✅ Correção: Type definido
+                          type="button" 
                           aria-label={`Excluir tarefa: ${task.title}`}
                           title="Excluir tarefa"
-                          className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg"
+                          className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg cursor-pointer"
                         >
                           <FiTrash2 aria-hidden="true" />
                         </button>
@@ -216,7 +211,7 @@ const DashboardContent = () => {
               initial={{ x: 50, opacity: 0 }} 
               animate={{ x: 0, opacity: 1 }} 
               exit={{ x: 50, opacity: 0 }} 
-              role="alert" // ✅ Melhoria: Notifica leitores de tela sobre o alerta
+              role="alert"
               className={`${n.type === 'success' ? 'bg-green-600' : 'bg-red-600'} px-6 py-4 rounded-xl shadow-xl text-white`}
             >
               {n.message}
@@ -239,7 +234,7 @@ const LoadingScreen = () => (
 );
 
 /**
- * 📦 EXPORTAÇÃO PRINCIPAL COM BOUNDARY
+ * 📦 EXPORTAÇÃO PRINCIPAL
  */
 const ClientDashboard = () => (
   <Suspense fallback={<LoadingScreen />}>
