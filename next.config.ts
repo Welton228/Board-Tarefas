@@ -1,49 +1,33 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
- 
-  // Configuração de imagens, caso queira otimizar imagens de domínios específicos
+  // 🚀 ATIVAÇÃO DO TURBOPACK
+  // Isso resolve o erro "This build is using Turbopack, with a webpack config"
+  turbopack: {},
+
+  // 🖼️ CONFIGURAÇÃO DE IMAGENS (Versão Atualizada)
+  // Substituímos 'domains' por 'remotePatterns' para suportar fotos de perfil do Google
   images: {
-    // Defina aqui os domínios permitidos para carregamento de imagens
-    domains: ['example.com'], // Exemplo de domínio, substitua pelo seu domínio real
-  },
-
-  // Configuração para redirecionamentos (opcional)
-  async redirects() {
-    return [
+    remotePatterns: [
       {
-        source: '/old-url',  // URL antiga
-        destination: '/new-url',  // Nova URL
-        permanent: true,  // Se for redirecionamento permanente
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com', // Necessário para imagens do Google Auth
       },
-    ];
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com', // Caso use login com GitHub
+      },
+    ],
   },
 
-  // Configuração do Webpack (opcional)
-  webpack(config) {
-    // Exemplo de como adicionar regras personalizadas no Webpack
-    config.module.rules.push({
-      test: /\.md$/,  // Regra para arquivos Markdown
-      use: 'raw-loader',  // Usa o loader raw-loader para lidar com arquivos Markdown
-    });
-    return config;  // Retorna a configuração modificada
-  },
-
-  // Configurações de variáveis de ambiente
-  env: {
-    // Variáveis de ambiente personalizadas que podem ser usadas no frontend
-    CUSTOM_API_URL: process.env.CUSTOM_API_URL,  // Exemplo de variável de ambiente
-  },
-
-  // Configuração de TypeScript, caso seja necessário ignorar erros durante a construção
+  // 🛠️ CONFIGURAÇÕES DE TYPESCRIPT
   typescript: {
-    // Ignorar erros de construção do TypeScript (não recomendado em produção)
-    ignoreBuildErrors: true,  
+    // Mantivemos para facilitar o seu deploy inicial na Vercel
+    ignoreBuildErrors: true, 
   },
 
-  // Outras configurações possíveis para otimização do Next.js podem ser adicionadas aqui
-  // Por exemplo, para desabilitar a análise de pacotes (útil para produção)
-  // productionBrowserSourceMaps: false,
+  // ✅ REMOVEMOS: O bloco 'webpack' que estava causando o erro de compilação.
+  // O Next.js 16 gerencia os módulos automaticamente sem precisar do raw-loader.
 };
 
 export default nextConfig;
