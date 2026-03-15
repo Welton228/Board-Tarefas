@@ -1,32 +1,46 @@
 import { PrismaClient } from '@prisma/client';
 
 /**
- * 💡 PADRÃO SINGLETON REFORÇADO
- * No Next.js, o hot-reloading cria instâncias duplicadas do PrismaClient.
- * Este padrão garante que apenas uma conexão seja mantida no ambiente de desenvolvimento.
+ * 💡 PADRÃO SINGLETON REFORÇADO (Best Practice)
+ * * Por que isso é necessário?
+ * No Next.js (Desenvolvimento), o "Hot Reloading" reinicia o servidor a cada salvamento de arquivo.
+ * Se criarmos um `new PrismaClient()` direto, cada salvamento abriria uma nova conexão com o banco.
+ * Em poucos minutos, você atingiria o limite de conexões (Connection Limit) do seu PostgreSQL.
+ * * Este arquivo garante que o PrismaClient seja instanciado apenas UMA vez.
  */
 
+// 1. Definição da função de criação do cliente
 const prismaClientSingleton = () => {
   return new PrismaClient({
+    // Configura logs estratégicos: queries apenas em dev, erros sempre.
     log: process.env.NODE_ENV === 'development' 
       ? ['query', 'error', 'warn'] 
       : ['error'],
   });
 };
 
-// Extende o objeto global do Node.js para armazenar a instância do Prisma
-// Isso evita que o TypeScript reclame do 'global.prisma'
+// 2. Tipagem para o escopo global do Node.js
+// Usamos 'undefined' para permitir a verificação de existência na inicialização.
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
+
 declare global {
+  /**
+   * Usamos 'var' em vez de 'let/const' aqui porque o escopo global do Node 
+   * exige 'var' para que a propriedade seja anexada corretamente ao objeto global.
+   */
   // eslint-disable-next-line no-var
-  var prisma: ReturnType<typeof prismaClientSingleton> | undefined;
+  var prismaGlobal: PrismaClientSingleton | undefined;
 }
 
-// Inicializa o cliente: tenta usar o global primeiro, se não existir, cria um novo
-const prisma = globalThis.prisma ?? prismaClientSingleton();
+// 3. Inicialização Inteligente
+// Tenta recuperar do global (dev) ou cria um novo (prod ou primeira execução)
+const prisma = globalThis.prismaGlobal ?? prismaClientSingleton();
 
+// 4. Exportação do Cliente
 export default prisma;
 
-// Se não estivermos em produção, salvamos a instância no objeto global
+// 5. Preservação da instância em ambiente de Desenvolvimento
+// Isso impede que o Hot Reload crie novas conexões a cada mudança no código.
 if (process.env.NODE_ENV !== 'production') {
-  globalThis.prisma = prisma;
+  globalThis.prismaGlobal = prisma;
 }
