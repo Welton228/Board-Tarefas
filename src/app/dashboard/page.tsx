@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import CreateTaskForm from "../../createTaskUi/page";
 
 interface Task {
-  id: string;
+  id: number;
   title: string;
   description: string;
   completed: boolean;
@@ -27,6 +27,7 @@ const DashboardContent = () => {
 
   /**
    * 📡 SINCRONIZAÇÃO DE DADOS
+   * Ajustado para evitar cache agressivo do Next.js 15
    */
   const fetchTasks = useCallback(async () => {
     if (status !== "authenticated") return;
@@ -39,8 +40,13 @@ const DashboardContent = () => {
     try {
       const response = await fetch("/api/tasks", {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache" 
+        },
         signal: controllerRef.current.signal,
+        // 🚀 Força o Next.js 15 a ignorar o cache de dados estáticos
+        cache: 'no-store',
       });
 
       if (!response.ok) throw new Error("Erro ao buscar dados");
@@ -75,7 +81,7 @@ const DashboardContent = () => {
       <header className="fixed top-0 inset-x-0 bg-gray-900/60 backdrop-blur-xl z-40 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
-            {/* ✅ Correção Tailwind: bg-linear-to-r */}
+            {/* ✅ Correção Tailwind: Utilizando bg-linear-to-r (Sintaxe Moderna) */}
             <h1 className="text-2xl font-black bg-linear-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent uppercase tracking-tighter">
               Nexus Task
             </h1>
@@ -83,6 +89,8 @@ const DashboardContent = () => {
               {session.user?.email}
             </p>
           </div>
+          
+          {/* ✅ Acessibilidade: Adicionado aria-label e title */}
           <button 
             type="button"
             onClick={() => signOut({ callbackUrl: "/login" })} 
@@ -103,7 +111,6 @@ const DashboardContent = () => {
           <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
             <FiPlus className="text-blue-500" /> Nova Tarefa
           </h2>
-          {/* ✅ Correção TS: Garantindo que a prop onTaskSaved existe */}
           <CreateTaskForm onTaskSaved={fetchTasks} />
         </section>
 
@@ -114,12 +121,13 @@ const DashboardContent = () => {
                 <FiCheck className="text-emerald-400" /> Suas Atividades
               </h2>
               
+              {/* ✅ Acessibilidade: Botão de refresh agora com título e label */}
               <button 
                 type="button"
                 onClick={fetchTasks} 
                 disabled={loading} 
-                title="Recarregar tarefas"
-                aria-label="Recarregar tarefas"
+                title="Recarregar lista de tarefas"
+                aria-label="Recarregar lista de tarefas"
                 className="p-3 bg-gray-800 text-blue-400 rounded-2xl hover:bg-gray-700 transition-all cursor-pointer disabled:opacity-30"
               >
                 <FiRefreshCw className={loading ? 'animate-spin' : ''} />
@@ -146,6 +154,7 @@ const DashboardContent = () => {
                       </div>
 
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* ✅ Acessibilidade: Botões de ação com labels descritivos */}
                         <button 
                           type="button"
                           title="Editar tarefa"
@@ -166,7 +175,7 @@ const DashboardContent = () => {
                     </motion.div>
                   ))
                 ) : (
-                  !loading && <p className="text-center py-20 text-gray-600">Nada pendente por aqui.</p>
+                  !loading && <p className="text-center py-20 text-gray-600 italic">Nada pendente por aqui.</p>
                 )}
               </AnimatePresence>
             </div>
