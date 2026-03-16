@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import { authConfig } from "./src/auth.config"; // ⬅️ IMPORTANTE: Importar da config leve
+import { authConfig } from "././src/auth.config"; // ⬅️ IMPORTANTE: Importar da config leve
 import { NextResponse } from "next/server";
 
 /**
