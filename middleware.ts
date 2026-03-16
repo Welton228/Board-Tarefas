@@ -1,5 +1,12 @@
-import { auth } from "@/src/auth"; 
+import NextAuth from "next-auth";
+import { authConfig } from "./src/auth.config"; // ⬅️ IMPORTANTE: Importar da config leve
 import { NextResponse } from "next/server";
+
+/**
+ * ⚙️ INICIALIZAÇÃO DO AUTH
+ * Usamos a versão compatível com Edge para evitar o erro de limite de 1MB da Vercel.
+ */
+const { auth } = NextAuth(authConfig);
 
 /**
  * ℹ️ CONFIGURAÇÕES DE NEGÓCIO
@@ -39,15 +46,15 @@ export default auth((req) => {
    * 3. LÓGICA DE REDIRECIONAMENTO
    */
 
-  // Se logado e tentar acessar login, vai para o dashboard
+  // ✅ Usuário logado tentando acessar página de login -> Vai para Dashboard
   if (isLoggedIn && isLoginPage) {
     return NextResponse.redirect(new URL(`/${currentLocale}/dashboard`, nextUrl));
   }
 
-  // Se não logado e tentar acessar rota protegida (que não seja API)
+  // ✅ Usuário NÃO logado acessando rota protegida (Exceto APIs) -> Vai para Login
   if (!isLoggedIn && isProtectedRoute && !isApiRoute) {
     const loginUrl = new URL(`/${currentLocale}/login`, nextUrl);
-    // Salva a página que o usuário tentou acessar para voltar depois do login
+    // Preserva a URL original para redirecionar após o login bem-sucedido
     loginUrl.searchParams.set("callbackUrl", nextUrl.href);
     return NextResponse.redirect(loginUrl);
   }
@@ -55,7 +62,7 @@ export default auth((req) => {
   // 4. CONTINUIDADE DA REQUISIÇÃO
   const response = NextResponse.next();
   
-  // Injeta o locale nos headers para que Server Components possam ler facilmente
+  // Injeta o locale nos headers (Útil para Server Components lerem o idioma)
   response.headers.set('x-locale', currentLocale); 
   
   return response;
@@ -63,14 +70,14 @@ export default auth((req) => {
 
 /**
  * ⚙️ MATCHER (FILTRO DE EXECUÇÃO)
- * Otimizado para ignorar arquivos estáticos e focar em rotas dinâmicas.
+ * Protege o middleware de rodar em arquivos estáticos, economizando recursos.
  */
 export const config = {
   matcher: [
     /*
-     * Ignora arquivos de sistema e mídia para não sobrecarregar o middleware:
+     * Ignora arquivos de sistema e mídia:
      * - _next/static, _next/image, favicon.ico
-     * - extensões de imagem comuns
+     * - extensões de imagem comuns (svg, png, etc)
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
