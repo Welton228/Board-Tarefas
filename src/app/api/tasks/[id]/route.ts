@@ -1,13 +1,11 @@
 /**
  * ⚙️ CONFIGURAÇÕES DE RUNTIME
- * IMPORTANTE: Fixamos 'nodejs' pois o Prisma Client nativo não roda no Edge Runtime.
- * 'force-dynamic' garante que a sessão seja validada a cada requisição.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma'; 
+import prisma from '../../../../lib/prisma'; // 💡 Usando Alias para consistência
 import { auth } from '@/src/auth';
 
 /**
@@ -26,17 +24,16 @@ export async function PUT(
       return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 });
     }
 
-    // 2. Validação do ID (Prisma usa Int ou String dependendo do seu schema)
-    // Se no seu schema o ID for String (UUID/CUID), remova o parseInt.
+    // 2. Validação do ID
     const taskId = parseInt(id, 10);
     if (isNaN(taskId)) {
       return NextResponse.json({ error: 'Formato de ID inválido' }, { status: 400 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { title, description, completed } = body;
 
-    // 3. Verificação de Propriedade (Segurança)
+    // 3. Verificação de Propriedade (Segurança Crucial)
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: { userId: true }
@@ -50,7 +47,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Acesso negado: você não é o dono desta tarefa' }, { status: 403 });
     }
 
-    // 4. Atualização Atômica
+    // 4. Atualização Atômica (Só atualiza o que foi enviado)
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
       data: {
@@ -88,18 +85,18 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
-    // 1. Busca para verificar se a tarefa pertence ao usuário antes de deletar
+    // 1. Busca para verificar propriedade antes de deletar
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: { userId: true }
     });
 
     if (!task) {
-      return NextResponse.json({ error: 'Tarefa já foi removida ou não existe' }, { status: 404 });
+      return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 });
     }
 
     if (task.userId !== session.user.id) {
-      return NextResponse.json({ error: 'Permissão negada para excluir esta tarefa' }, { status: 403 });
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     // 2. Exclusão definitiva
@@ -111,6 +108,6 @@ export async function DELETE(
 
   } catch (error: any) {
     console.error('[TASK_DELETE_ERROR]:', error.message);
-    return NextResponse.json({ error: 'Erro técnico ao processar exclusão' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao processar exclusão' }, { status: 500 });
   }
 }

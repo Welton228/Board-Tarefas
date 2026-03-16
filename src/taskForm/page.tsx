@@ -6,9 +6,13 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 
+/**
+ * 🎯 ESQUEMA DE VALIDAÇÃO
+ * Define as regras para título e descrição usando Zod.
+ */
 const taskSchema = z.object({
-  title: z.string().min(1, 'O título é obrigatório').max(100),
-  description: z.string().min(1, 'A descrição é obrigatória').max(500),
+  title: z.string().min(1, 'O título é obrigatório').max(100, 'Máximo 100 caracteres'),
+  description: z.string().min(1, 'A descrição é obrigatória').max(500, 'Máximo 500 caracteres'),
 });
 
 type TaskFormData = z.infer<typeof taskSchema>;
@@ -49,6 +53,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
     defaultValues: { title: '', description: '' },
   });
 
+  // Preenche o formulário caso esteja em modo de edição
   useEffect(() => {
     if (isEditing && task) {
       setValue('title', task.title);
@@ -56,6 +61,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
   }, [isEditing, task, setValue]);
 
+  /**
+   * 🛠️ LÓGICA DE ENVIO
+   * Gerencia tanto a criação (POST) quanto a atualização (PUT).
+   */
   const onSubmit = async (data: TaskFormData) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -70,15 +79,15 @@ const TaskForm: React.FC<TaskFormProps> = ({
         body: JSON.stringify(data),
       });
 
-      // ✅ TRATAMENTO DE SESSÃO: 
-      // Se a API retornar 401, forçamos o redirecionamento para o login
+      // Caso o token JWT tenha expirado ou falhado
       if (response.status === 401) {
-        router.push('/login?message=Sessão expirada. Faça login novamente.');
+        router.push('/login?message=Sessão expirada.');
         return;
       }
 
-      if (!response.ok) throw new Error('Erro ao salvar tarefa');
+      if (!response.ok) throw new Error('Erro ao processar requisição');
 
+      // Feedback para o componente pai
       if (isEditing && onTaskUpdated) {
         onTaskUpdated();
       } else {
@@ -89,63 +98,68 @@ const TaskForm: React.FC<TaskFormProps> = ({
       if (onClose) onClose();
 
     } catch (error: any) {
-      console.error("Erro na requisição:", error.message);
-      alert("Houve um erro ao salvar a tarefa. Tente novamente.");
+      console.error("[TASK_FORM_ERROR]:", error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="w-full max-w-2xl mx-auto space-y-4 bg-gray-900/80 backdrop-blur-md p-6 rounded-2xl border border-gray-800 shadow-2xl"
+    <form 
+      onSubmit={handleSubmit(onSubmit)} 
+      className="space-y-5 bg-gray-900/60 backdrop-blur-md p-6 rounded-2xl border border-white/10 shadow-2xl"
     >
-      <div className="flex flex-col">
-        <label htmlFor="title" className="text-sm font-medium text-gray-400 mb-1 ml-1">
+      {/* Campo de Título */}
+      <div className="flex flex-col space-y-1.5">
+        <label htmlFor="title" className="text-xs font-bold text-blue-400 uppercase tracking-wider ml-1">
           Título da Tarefa
         </label>
-        <input
+        <input 
           id="title"
-          {...register('title')}
-          disabled={isSubmitting}
-          className="p-3 rounded-xl bg-gray-800 text-gray-100 border border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
-          placeholder="O que precisa ser feito?"
+          {...register('title')} 
+          placeholder="Ex: Estudar Next.js 15"
+          className="p-3.5 rounded-xl bg-gray-800/50 text-white border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all" 
         />
-        {errors.title && <span className="text-red-500 text-xs mt-1 ml-1">{errors.title.message}</span>}
+        {errors.title && (
+          <span className="text-red-400 text-xs mt-1 ml-1 font-medium">{errors.title.message}</span>
+        )}
       </div>
 
-      <div className="flex flex-col">
-        <label htmlFor="description" className="text-sm font-medium text-gray-400 mb-1 ml-1">
-          Descrição detalhada
+      {/* Campo de Descrição */}
+      <div className="flex flex-col space-y-1.5">
+        <label htmlFor="description" className="text-xs font-bold text-blue-400 uppercase tracking-wider ml-1">
+          Descrição Detalhada
         </label>
-        <textarea
+        <textarea 
           id="description"
-          {...register('description')}
-          disabled={isSubmitting}
-          className="p-3 rounded-xl bg-gray-800 text-gray-100 border border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[120px] resize-none"
-          placeholder="Descreva os detalhes..."
+          {...register('description')} 
+          placeholder="O que precisa ser feito?"
+          /* ✅ Atualizado: min-h-25 (100px) seguindo Tailwind v4 */
+          className="p-3.5 rounded-xl bg-gray-800/50 text-white border border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none min-h-25" 
         />
-        {errors.description && <span className="text-red-500 text-xs mt-1 ml-1">{errors.description.message}</span>}
+        {errors.description && (
+          <span className="text-red-400 text-xs mt-1 ml-1 font-medium">{errors.description.message}</span>
+        )}
       </div>
 
-      <div className="flex justify-end gap-3 pt-4">
+      {/* Ações do Formulário */}
+      <div className="flex justify-end gap-3 pt-2">
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            disabled={isSubmitting}
-            className="px-6 py-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+            className="px-6 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-colors font-medium"
           >
             Cancelar
           </button>
         )}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-8 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold transition-all shadow-lg shadow-blue-900/20"
+        <button 
+          type="submit" 
+          disabled={isSubmitting} 
+          /* ✅ bg-linear-to-r aplicado no botão para combinar com o tema */
+          className="px-8 py-2.5 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 text-white font-bold hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
         >
-          {isSubmitting ? 'Processando...' : isEditing ? 'Atualizar' : 'Criar Tarefa'}
+          {isSubmitting ? 'Gravando...' : isEditing ? 'Atualizar Tarefa' : 'Criar Tarefa'}
         </button>
       </div>
     </form>

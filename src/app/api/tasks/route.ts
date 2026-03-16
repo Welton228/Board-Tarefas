@@ -2,31 +2,37 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../lib/prisma';
+import prisma from '../../../lib/prisma'; // 💡 Use o alias @ para caminhos mais limpos
 import { auth } from '@/src/auth';
 
+/**
+ * 📝 POST: CRIAÇÃO DE TAREFA
+ */
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
 
+    // 🛡️ PROTEÇÃO: Verifica se o usuário está logado
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const body = await req.json();
+    // 📦 CAPTURA DO CORPO: Tratando erro caso o body seja inválido
+    const body = await req.json().catch(() => ({}));
     const { title, description } = body;
 
-    // 🛡️ VALIDAÇÃO DE CAMPO OBRIGATÓRIO (Clean Code)
-    if (!title || title.trim().length === 0) {
+    // 🛡️ VALIDAÇÃO: Título é obrigatório e não pode ser apenas espaços
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
       return NextResponse.json({ error: 'O título é obrigatório' }, { status: 400 });
     }
 
-    // Criação no banco usando o userId da sessão garantida pelo seu Schema
+    // 💾 BANCO DE DADOS: Criação vinculada ao ID do usuário da sessão
     const newTask = await prisma.task.create({
       data: {
         title: title.trim(),
         description: description?.trim() || null,
-        userId: session.user.id, // Aqui usamos o ID que vem do auth()
+        userId: session.user.id,
+        completed: false, // Garante que começa como pendente
       },
     });
 
@@ -34,13 +40,16 @@ export async function POST(req: NextRequest) {
 
   } catch (error: any) {
     console.error('[TASK_POST_ERROR]:', error.message);
-    return NextResponse.json({ error: 'Erro ao criar tarefa' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Erro ao criar tarefa no servidor' }, 
+      { status: 500 }
+    );
   }
 }
 
 /**
- * 💡 DICA: O método GET para listar as tarefas também deve seguir este padrão
- * de buscar apenas onde userId === session.user.id.
+ * 📋 GET: LISTAGEM DE TAREFAS
+ * Retorna apenas as tarefas pertencentes ao usuário logado.
  */
 export async function GET() {
   try {
@@ -51,12 +60,20 @@ export async function GET() {
     }
 
     const tasks = await prisma.task.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: 'desc' }
+      where: { 
+        userId: session.user.id 
+      },
+      orderBy: { 
+        createdAt: 'desc' 
+      }
     });
 
     return NextResponse.json(tasks);
-  } catch (error) {
-    return NextResponse.json({ error: 'Erro ao buscar tarefas' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[TASK_GET_ERROR]:', error.message);
+    return NextResponse.json(
+      { error: 'Erro ao buscar tarefas' }, 
+      { status: 500 }
+    );
   }
 }
