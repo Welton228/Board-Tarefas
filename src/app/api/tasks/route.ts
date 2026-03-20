@@ -2,49 +2,23 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../lib/prisma'; // 💡 Ajustado para usar o alias padrão
+import prisma from '../../../lib/prisma'; 
 import { auth } from '@/src/auth';
 
 /**
- * 📝 POST: CRIAÇÃO DE TAREFA
+ * 🛠️ HELPER: VALIDAÇÃO DE SESSÃO E ID
+ * Converte o ID da URL para número e valida a sessão do usuário.
  */
-export async function POST(req: NextRequest) {
-  try {
-    const session = await auth();
+async function getContext(req: NextRequest) {
+  const session = await auth();
+  const { searchParams } = new URL(req.url);
+  const idParam = searchParams.get('id');
+  
+  // Converte string "1" para número 1. Se não for número, retorna NaN.
+  const id = idParam ? Number(idParam) : null;
+  const userId = session?.user?.id;
 
-    // 🛡️ PROTEÇÃO: Verifica se há usuário e se o ID existe
-    // No NextAuth v5, às vezes o ID fica dentro de session.user.id como string
-    if (!session?.user?.id) {
-      console.error("[AUTH_CHECK]: Sessão inválida ou sem ID de usuário");
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
-
-    const body = await req.json().catch(() => ({}));
-    const { title, description } = body;
-
-    if (!title || typeof title !== 'string' || title.trim().length === 0) {
-      return NextResponse.json({ error: 'O título é obrigatório' }, { status: 400 });
-    }
-
-    // 💾 BANCO DE DADOS
-    const newTask = await prisma.task.create({
-      data: {
-        title: title.trim(),
-        description: description?.trim() || null,
-        userId: session.user.id, // 👈 O Prisma precisa que este ID exista na tabela User
-        completed: false,
-      },
-    });
-
-    return NextResponse.json(newTask, { status: 201 });
-
-  } catch (error: any) {
-    console.error('[TASK_POST_ERROR]:', error.message);
-    return NextResponse.json(
-      { error: 'Erro ao criar tarefa no servidor' }, 
-      { status: 500 }
-    );
-  }
+  return { userId, id };
 }
 
 /**
@@ -53,29 +27,110 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   try {
     const session = await auth();
-
-    // 💡 LOG DE DEBUG: Verifique no terminal da Vercel se o ID está aparecendo
-    console.log("Sessão ativa para o usuário:", session?.user?.email, "ID:", session?.user?.id);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    if (!session?.user?.id) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const tasks = await prisma.task.findMany({
-      where: { 
-        userId: session.user.id 
-      },
-      orderBy: { 
-        createdAt: 'desc' 
-      }
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'desc' }
     });
 
     return NextResponse.json(tasks);
   } catch (error: any) {
     console.error('[TASK_GET_ERROR]:', error.message);
-    return NextResponse.json(
-      { error: 'Erro ao buscar tarefas' }, 
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar tarefas' }, { status: 500 });
+  }
+}
+
+/**
+ * 📝 POST: CRIAÇÃO DE TAREFA
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const { userId } = await getContext(req);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
+    const body = await req.json().catch(() => ({}));
+    const { title, description } = body;
+
+    if (!title?.trim()) {
+      return NextResponse.json({ error: 'O título é obrigatório' }, { status: 400 });
+    }
+
+    const newTask = await prisma.task.create({
+      data: {
+        title: title.trim(),
+        description: description?.trim() || null,
+        userId: userId,
+        completed: false,
+      },
+    });
+
+    return NextResponse.json(newTask, { status: 201 });
+  } catch (error: any) {
+    console.error('[TASK_POST_ERROR]:', error.message);
+    return NextResponse.json({ error: 'Erro ao criar tarefa' }, { status: 500 });
+  }
+}
+
+/**
+ * 🔄 PATCH: ATUALIZAÇÃO DE TAREFA
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    const { userId, id } = await getContext(req);
+    
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!id || isNaN(id)) return NextResponse.json({ error: 'ID numérico inválido' }, { status: 400 });
+
+    const body = await req.json();
+
+    // 🛡️ Verifica se a tarefa existe e pertence ao usuário
+    const task = await prisma.task.findFirst({ 
+      where: { id: id, userId: userId } 
+    });
+
+    if (!task) return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 });
+
+    const updatedTask = await prisma.task.update({
+      where: { id: id }, // O Prisma agora recebe um Number
+      data: {
+        title: body.title?.trim() || undefined,
+        description: body.description?.trim() || undefined,
+        completed: typeof body.completed === 'boolean' ? body.completed : undefined,
+      },
+    });
+
+    return NextResponse.json(updatedTask);
+  } catch (error: any) {
+    console.error('[TASK_PATCH_ERROR]:', error.message);
+    return NextResponse.json({ error: 'Erro ao atualizar' }, { status: 500 });
+  }
+}
+
+/**
+ * 🗑️ DELETE: REMOÇÃO DE TAREFA
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const { userId, id } = await getContext(req);
+
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!id || isNaN(id)) return NextResponse.json({ error: 'ID numérico inválido' }, { status: 400 });
+
+    // 🛡️ Verifica propriedade antes de deletar
+    const task = await prisma.task.findFirst({ 
+      where: { id: id, userId: userId } 
+    });
+
+    if (!task) return NextResponse.json({ error: 'Registro não autorizado' }, { status: 404 });
+
+    await prisma.task.delete({
+      where: { id: id } // O Prisma agora recebe um Number
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('[TASK_DELETE_ERROR]:', error.message);
+    return NextResponse.json({ error: 'Erro ao remover' }, { status: 500 });
   }
 }
